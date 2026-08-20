@@ -91,6 +91,8 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .blk .rol.w{background:#78350f;color:#fde68a}
 .blk .prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
    white-space:nowrap;color:var(--text)}
+.blk .meta{color:var(--muted);white-space:nowrap;font-size:.92em;
+   overflow:hidden;text-overflow:ellipsis;max-width:40%}
 .blk .esp{color:var(--warn);font-weight:700;white-space:nowrap}
 
 /* indicadores por categoria, siempre visibles */
@@ -337,9 +339,11 @@ function bloqueosHTML(i){
     const rol = s.rol === "bloquea"
       ? '<span class="rol b">bloquea</span>'
       : (s.rol === "espera" ? '<span class="rol w">espera</span>' : "");
+    const meta = [s.host, s.bd].filter(Boolean).map(esc).join(" · ");
     return '<div class="row">' +
              '<span class="spid">' + esc(s.spid) + "</span>" + rol +
              '<span class="prog">' + esc(s.programa || s.login || "—") + "</span>" +
+             (meta ? '<span class="meta">' + meta + "</span>" : "") +
              '<span class="esp">' + esc(s.espera || "") + "</span>" +
            "</div>";
   }).join("");
