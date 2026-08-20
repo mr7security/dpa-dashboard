@@ -73,6 +73,12 @@ METRICAS = {
     "TempDB Free Space": "tempdb_libre_mb",
     "TempDB Free Log Size": "tempdb_log_libre_mb",
     "TempDB Free Log Size Percentage": "tempdb_log_libre_pct",
+
+    # Disco. cola -> operaciones de E/S de TODA la maquina (no solo de esta
+    # instancia); lecturas y escrituras -> paginas por segundo
+    "Disk Queue Length": "disco_cola",
+    "Page Read per Second": "paginas_leidas_seg",
+    "Page Write per Second": "paginas_escritas_seg",
 }
 
 # Categorias de alarma que devuelve DPA. El orden de pintado vive en
@@ -661,6 +667,12 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "tempdb_libre_mb": m["tempdb_libre_mb"]["ultimo"],
         "tempdb_log_libre_mb": m["tempdb_log_libre_mb"]["ultimo"],
         "tempdb_log_libre_pct": m["tempdb_log_libre_pct"]["ultimo"],
+
+        # disco
+        "disco_cola": m["disco_cola"]["ultimo"],
+        "disco_cola_max": m["disco_cola"]["max"],
+        "paginas_leidas_seg": m["paginas_leidas_seg"]["ultimo"],
+        "paginas_escritas_seg": m["paginas_escritas_seg"]["ultimo"],
 
         "alarmas": alarmas,
         "tabs": {

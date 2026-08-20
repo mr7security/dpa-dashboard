@@ -144,6 +144,9 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
    color:var(--muted);font-weight:800;margin:10px 0 3px;opacity:.75}
 .detalle .subt:first-child{margin-top:0}
 .zona-c .detalle{margin-bottom:12px}
+.zona-c .charts + .detalle{margin-top:12px;margin-bottom:0}
+.detalle .subt .pista{text-transform:none;letter-spacing:0;font-weight:400;
+   opacity:.7}
 .detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
 .detalle td{padding:3px 0;border-bottom:1px solid #24334a}
 .detalle td:first-child{color:var(--muted);width:42%}
@@ -154,7 +157,12 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .tag.warn{color:var(--warn);border-color:#78350f}
 .tag.alarm{color:var(--alarm);border-color:#7f1d1d}
 .tag.unk{opacity:.45}
-.avisos{margin-top:8px;font-size:.74rem;color:var(--warn)}
+.avisos{margin-top:10px;font-size:.74rem;display:flex;flex-wrap:wrap;gap:4px 8px}
+.avisos span{background:var(--card2);border:1px solid #2b3d57;border-radius:6px;
+   padding:2px 8px}
+.avisos.warn{color:var(--warn)} .avisos.warn span{border-color:#78350f}
+.avisos.alarm{color:var(--alarm)} .avisos.alarm span{border-color:#7f1d1d}
+.avisos.ok{color:var(--ok);opacity:.8}
 
 .charts{display:flex;flex-direction:column;gap:8px;margin-top:0}
 .chartblock .clab{font-size:.66rem;color:var(--muted);text-transform:uppercase;
@@ -440,16 +448,25 @@ function detalleHTML(i){
               esc(CAT_ES[c] || c) + "</span>")
     .join("");
 
-  const avisos = (i.avisos && i.avisos.length)
-    ? '<div class="avisos">' + i.avisos.map(esc).join(" · ") + "</div>" : "";
 
   return '<div class="detalle">' +
            '<div class="subt">Recursos</div><table>' + rec + "</table>" +
            (tempdb ? '<div class="subt">TempDB</div><table>' + tempdb + "</table>" : "") +
            '<div class="subt">Instancia</div><table>' + inf + "</table>" +
            '<div class="alarmas">' + alarmas + "</div>" +
-           avisos +
          "</div>";
+}
+
+// Por que la tarjeta esta de ese color. Va junto a los indicadores, que es
+// donde se mira cuando algo llama la atencion.
+function avisosHTML(i){
+  const a = i.avisos || [];
+  if (!a.length){
+    return '<div class="avisos ok">Sin incidencias</div>';
+  }
+  const cls = (i.nivel === "critico" || i.nivel === "caido") ? "alarm" : "warn";
+  return '<div class="avisos ' + cls + '">' +
+         a.map(t => "<span>" + esc(t) + "</span>").join("") + "</div>";
 }
 
 // Bloque de backups. Ojo con la lectura: DPA mide "el tiempo que lleva LA PEOR
@@ -466,6 +483,24 @@ function backupsHTML(i){
   ]);
   if (!t) return "";
   return '<div class="detalle"><div class="subt">Backups</div>' +
+         "<table>" + t + "</table></div>";
+}
+
+// E/S de disco. Sustituye a la pantalla Storage I/O de DPA, que no es
+// accesible como dato (se dibuja con imagenes generadas en el servidor).
+// Ojo: la cola de disco es de TODA la maquina, no solo de esta instancia.
+function discoHTML(i){
+  const t = filas([
+    ["Cola de disco",      val(i.disco_cola, "E/S", 50, 100)],
+    ["Cola, pico 1 h",     val(i.disco_cola_max, "E/S")],
+    ["Páginas leídas",     val(i.paginas_leidas_seg, "/s")],
+    ["Páginas escritas",   val(i.paginas_escritas_seg, "/s")],
+    ["Latencia lectura",   val(i.disco_lectura, "ms", 15, 30)],
+    ["Latencia escritura", val(i.disco_escritura, "ms", 15, 30)]
+  ]);
+  if (!t) return "";
+  return '<div class="detalle"><div class="subt">Disco · E/S ' +
+         '<span class="pista">(máquina completa)</span></div>' +
          "<table>" + t + "</table></div>";
 }
 
@@ -576,6 +611,8 @@ function tarjeta(i){
         '<canvas class="chart" data-key="' + i.db_id + '|Active Sessions" data-color="' + SECCION.color + '"></canvas></div>' +
       '<div class="chartblock" data-type="qual"><div class="clab">Tiempo de espera</div>' +
         '<canvas class="chart" data-key="' + i.db_id + '|Instance Wait Time" data-color="#a78bfa"></canvas></div>' +
+      '<div class="chartblock" data-type="qual"><div class="clab">CPU del servidor</div>' +
+        '<canvas class="chart" data-key="' + i.db_id + '|CPU Utilization" data-color="#f472b6"></canvas></div>' +
     "</div>";
 
   return '<div class="card ' + info.card + '" style="--cc:' +
@@ -590,9 +627,11 @@ function tarjeta(i){
         '<div class="zona zona-a">' +
           '<div class="svals">' + bloqueSesiones + bloqueEspera + "</div>" +
           indicadoresHTML(i) +
+          avisosHTML(i) +
         "</div>" +
         '<div class="zona zona-b">' + detalleHTML(i) + "</div>" +
-        '<div class="zona zona-c">' + backupsHTML(i) + graficas + "</div>" +
+        '<div class="zona zona-c">' + backupsHTML(i) + graficas +
+          discoHTML(i) + "</div>" +
       "</div>" +
       bloqueosHTML(i) +
     "</div>";
@@ -728,7 +767,7 @@ function tickHist(estado){
   const nuevo = {};
   const peticiones = [];
   insts.forEach(i => {
-    ["Active Sessions", "Instance Wait Time"].forEach(met => {
+    ["Active Sessions", "Instance Wait Time", "CPU Utilization"].forEach(met => {
       const clave = i.db_id + "|" + met;
       nuevo[clave] = histSeries[clave] || [];
       const url = "/api/historico?db=" + encodeURIComponent(i.db_id) +
