@@ -50,8 +50,11 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 /* y dentro, tres zonas en horizontal */
 .cbody{display:grid;
    grid-template-columns:minmax(250px,.85fr) minmax(280px,1.15fr) minmax(240px,1fr);
-   gap:18px;align-items:start}
+   gap:18px;align-items:stretch}
 .zona{min-width:0}
+/* la columna izquierda se centra en vertical: es la mas corta y asi no deja
+   un hueco muerto debajo */
+.zona-a{display:flex;flex-direction:column;justify-content:center}
 .cbody > .zona + .zona{border-left:1px solid #24334a;padding-left:18px}
 
 @media (max-width:1100px){
@@ -81,8 +84,9 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .status.alarm{color:var(--alarm)} .status.off{color:var(--off)}
 
 /* Tira de metricas grandes: todas del mismo tamano y alineadas entre si */
-.mstrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.m{display:flex;flex-direction:column;gap:1px;min-width:0}
+.mstrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;
+   text-align:center}
+.m{display:flex;flex-direction:column;gap:1px;min-width:0;align-items:center}
 .label{font-size:.66rem;color:var(--muted);text-transform:uppercase;
    letter-spacing:.07em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .value{font-size:2.4rem;font-weight:800;line-height:1.05;
@@ -148,6 +152,9 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .detalle .subt{font-size:.64rem;text-transform:uppercase;letter-spacing:.08em;
    color:var(--muted);font-weight:800;margin:10px 0 3px;opacity:.75}
 .detalle .subt:first-child{margin-top:0}
+/* dos bloques de detalle seguidos: separador claro para que no se solapen */
+.zona .detalle + .detalle{margin-top:16px;border-top:1px solid #24334a;
+   padding-top:12px}
 .zona-c .detalle{margin-bottom:12px}
 .zona-c .charts + .detalle{margin-top:12px;margin-bottom:0}
 .detalle .subt .pista{text-transform:none;letter-spacing:0;font-weight:400;
@@ -171,7 +178,7 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
 .detalle td{padding:3px 0;border-bottom:1px solid #24334a}
 .detalle td:first-child{color:var(--muted);width:42%}
-.alarmas{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.alarmas{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;margin-bottom:2px}
 .tag{font-size:.66rem;padding:2px 7px;border-radius:6px;border:1px solid #2b3d57;
    color:var(--muted);background:var(--card2)}
 .tag.ok{color:var(--ok);border-color:#14532d}
