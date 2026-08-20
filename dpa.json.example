@@ -4,7 +4,7 @@
   "password": "CAMBIAME",
 
   "puerto": 9000,
-  "intervalo_segundos": 15,
+  "intervalo_segundos": 30,
   "ventana_minutos": 60,
   "timeout_segundos": 20,
 

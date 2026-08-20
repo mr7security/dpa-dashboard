@@ -203,9 +203,9 @@ function fmtDur(seg){
 }
 
 function colorBloqueadas(v){
+  // cualquier sesion bloqueada es rojo: es la senal que se vigila aqui
   if (v === null || v === undefined) return "v-mut";
-  if (v >= 5) return "v-alarm";
-  if (v >= 1) return "v-warn";
+  if (v >= 1) return "v-alarm";
   return "v-ok";
 }
 

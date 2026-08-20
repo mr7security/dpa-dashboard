@@ -77,6 +77,12 @@ CATEGORIA_ES = {
 # Orden de severidad para consolidar
 ORDEN_NIVEL = {"ok": 0, "aviso": 1, "critico": 2}
 
+# Solo estas categorias pueden encender el ROJO cuando DPA las marca en
+# CRITICAL. El resto (disco, tempdb, backups, licencias, esperas, sesiones)
+# se queda en ambar por muy critico que lo pinte DPA: son cosas que mirar
+# cuando se pueda, no motivo para saltar de la silla.
+CATEGORIAS_ROJAS = ("CPU", "Memory", "Network")
+
 log = logging.getLogger("dpa")
 
 
@@ -354,20 +360,21 @@ def evaluar_estado(inst):
     for cat, lvl in (inst.get("alarmas") or {}).items():
         nombre = CATEGORIA_ES.get(cat, cat)
         if lvl == "CRITICAL":
-            subir("critico")
+            subir("critico" if cat in CATEGORIAS_ROJAS else "aviso")
             avisos.append("%s en critico" % nombre)
         elif lvl == "WARNING":
             subir("aviso")
             avisos.append("%s en aviso" % nombre)
 
+    # Cualquier sesion bloqueada enciende el rojo: es LA senal que se vigila
+    # en este panel. Va la primera en la lista de avisos.
     bloq = inst.get("sesiones_bloqueadas")
     if bloq:
-        if bloq >= 5:
-            subir("critico")
-            avisos.append("%d sesiones bloqueadas" % int(bloq))
-        else:
-            subir("aviso")
-            avisos.append("%d sesion(es) bloqueada(s)" % int(bloq))
+        subir("critico")
+        n = int(bloq)
+        avisos.insert(0, "%d %s" % (
+            n,
+            "sesion bloqueada" if n == 1 else "sesiones bloqueadas"))
 
     # Tuning queda FUERA del semaforo a proposito: en DPA "tuning critico"
     # significa que hay consejos de optimizacion pendientes, no que la
