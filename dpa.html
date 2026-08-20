@@ -152,6 +152,22 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .zona-c .charts + .detalle{margin-top:12px;margin-bottom:0}
 .detalle .subt .pista{text-transform:none;letter-spacing:0;font-weight:400;
    opacity:.7}
+
+/* medidores de porcentaje */
+.gauges{margin-top:14px}
+.gauges .subt{font-size:.64rem;text-transform:uppercase;letter-spacing:.08em;
+   color:var(--muted);font-weight:800;margin-bottom:5px;opacity:.75}
+.g{display:grid;grid-template-columns:minmax(80px,1fr) minmax(60px,1.1fr) 44px;
+   align-items:center;gap:10px;font-size:.72rem;padding:3px 0}
+.gl{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbar{height:7px;border-radius:999px;background:#24334a;overflow:hidden;
+   display:block}
+.gbar i{display:block;height:100%;border-radius:999px;background:var(--off);
+   transition:width .4s ease}
+.gbar i.ok{background:var(--ok)}
+.gbar i.warn{background:var(--warn)}
+.gbar i.alarm{background:var(--alarm)}
+.gv{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
 .detalle td{padding:3px 0;border-bottom:1px solid #24334a}
 .detalle td:first-child{color:var(--muted);width:42%}
@@ -178,7 +194,7 @@ canvas.chart{width:100%;height:64px;display:block}
 body.tv{padding:10px 12px;overflow:hidden}
 /* En TV la tarjeta se queda en lo esencial: sesiones, bloqueos e indicadores */
 body.tv #banner,body.tv .card-h .tech,body.tv .upd,
-body.tv .detalle,body.tv .charts,
+body.tv .detalle,body.tv .charts,body.tv .gauges,
 body.tv .m-qual{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
 /* la seccion y su rejilla de tarjetas rellenan el alto que se les asigne */
@@ -424,18 +440,13 @@ function filas(pares){
 }
 
 function detalleHTML(i){
+  // Los porcentajes viven en los medidores y las latencias en el bloque de
+  // disco: aqui solo lo que no esta en ningun otro sitio.
   const rec = filas([
-    ["CPU del servidor",       i.cpu != null ? fmt(i.cpu,1) + " %" : null],
-    ["CPU de la instancia",    i.cpu_instancia != null ? fmt(i.cpu_instancia,1) + " %" : null],
-    ["Signal waits",           i.signal_waits != null ? fmt(i.signal_waits,1) + " %" : null],
-    ["Memoria",                i.memoria != null ? fmt(i.memoria,1) + " %" : null],
-    ["Page life expectancy",   i.ple != null ? fmt(i.ple,0) + " s" : null],
-    ["Buffer cache hit",       i.cache_hit != null ? fmt(i.cache_hit,1) + " %" : null],
-    ["Latencia disco lectura", i.disco_lectura != null ? fmt(i.disco_lectura,1) + " ms" : null],
-    ["Latencia disco escritura", i.disco_escritura != null ? fmt(i.disco_escritura,1) + " ms" : null],
-    ["Batch requests",         i.batch_seg != null ? fmt(i.batch_seg,0) + " /s" : null],
-    ["Transacciones",          i.trans_seg != null ? fmt(i.trans_seg,0) + " /s" : null],
-    ["Round-trip",             i.rtt != null ? fmt(i.rtt,1) + " ms" : null]
+    ["Page life expectancy", val(i.ple, "s", 300, 120, true)],
+    ["Batch requests",       val(i.batch_seg, "/s")],
+    ["Transacciones",        val(i.trans_seg, "/s")],
+    ["Round-trip",           val(i.rtt, "ms", 5, 20)]
   ]);
 
   const inf = filas([
@@ -462,11 +473,41 @@ function detalleHTML(i){
 
 
   return '<div class="detalle">' +
-           '<div class="subt">Recursos</div><table>' + rec + "</table>" +
+           '<div class="subt">Rendimiento</div><table>' + rec + "</table>" +
            (tempdb ? '<div class="subt">TempDB</div><table>' + tempdb + "</table>" : "") +
            '<div class="subt">Instancia</div><table>' + inf + "</table>" +
            '<div class="alarmas">' + alarmas + "</div>" +
          "</div>";
+}
+
+// Barras de porcentaje. `invertido` para las que "menos es peor".
+function barra(etiqueta, v, aviso, critico, invertido){
+  if (v === null || v === undefined) return "";
+  const pct = Math.max(0, Math.min(100, v));
+  let cls = "ok";
+  if (invertido){
+    if (v <= critico) cls = "alarm"; else if (v <= aviso) cls = "warn";
+  } else {
+    if (v >= critico) cls = "alarm"; else if (v >= aviso) cls = "warn";
+  }
+  return '<div class="g">' +
+           '<span class="gl">' + esc(etiqueta) + "</span>" +
+           '<span class="gbar"><i class="' + cls + '" style="width:' + pct + '%"></i></span>' +
+           '<span class="gv v-' + cls + '">' + fmt(v, 0) + "%</span>" +
+         "</div>";
+}
+
+// Medidores: los porcentajes de un vistazo, que en tabla se leen mal
+function medidoresHTML(i){
+  const b = [
+    barra("CPU del servidor",   i.cpu,           75, 90),
+    barra("CPU de la instancia", i.cpu_instancia, 75, 90),
+    barra("Memoria",            i.memoria,       85, 95),
+    barra("Buffer cache hit",   i.cache_hit,     95, 90, true),
+    barra("Signal waits",       i.signal_waits,  20, 30)
+  ].join("");
+  if (!b) return "";
+  return '<div class="gauges"><div class="subt">Medidores</div>' + b + "</div>";
 }
 
 // Por que la tarjeta esta de ese color. Va junto a los indicadores, que es
@@ -670,6 +711,7 @@ function tarjeta(i){
           tira +
           indicadoresHTML(i) +
           avisosHTML(i) +
+          medidoresHTML(i) +
         "</div>" +
         '<div class="zona zona-b">' + detalleHTML(i) + "</div>" +
         '<div class="zona zona-c">' + backupsHTML(i) + graficas +
