@@ -516,16 +516,25 @@ def parsear_bloqueos(html_txt, maximo=MAX_BLOQUEOS):
             solo_digitos = re.sub(r"\D", "", crudo.split("(")[0])
             espera_ms = num(col("waittime"))
 
+            # 'blocked' es el spid que esta bloqueando a este; 0 = a nadie
+            bloqueado_por = col("blocked")
+            if bloqueado_por in ("0", ""):
+                bloqueado_por = None
+
             filas.append({
                 "spid": solo_digitos or crudo,
                 "rol": rol,
+                "bloqueado_por": bloqueado_por,
                 "programa": col("program_name") or col("loginame") or col("hostname"),
-                "login": col("loginame"),
+                "login": col("loginame") or col("nt_username"),
                 "host": col("hostname"),
                 "bd": col("db_name"),
                 "espera": col("lastwaittype"),
+                "recurso": col("waitresource"),
                 "comando": col("cmd"),
                 "estado": col("status"),
+                "trans_abiertas": num(col("open_tran")),
+                "cpu_ms": num(col("cpu")),
                 "espera_s": (espera_ms / 1000.0) if espera_ms is not None else None,
             })
 

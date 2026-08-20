@@ -100,20 +100,24 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
    padding:8px 10px;background:#2a1520}
 .blk h3{margin:0 0 6px;font-size:.68rem;text-transform:uppercase;
    letter-spacing:.07em;color:var(--alarm);font-weight:800}
-.blk .row{display:flex;gap:9px;align-items:baseline;font-size:.76rem;
-   padding:3px 0;border-bottom:1px solid #3f2130}
-.blk .row:last-child{border-bottom:none}
-.blk .spid,.bcard .spid{font-weight:800;font-variant-numeric:tabular-nums;
-   min-width:3.2em}
-.blk .rol,.bcard .rol{font-size:.6rem;font-weight:800;text-transform:uppercase;
-   padding:1px 6px;border-radius:5px;letter-spacing:.05em;flex:none}
-.blk .rol.b,.bcard .rol.b{background:#7f1d1d;color:#fecaca}
-.blk .rol.w,.bcard .rol.w{background:#78350f;color:#fde68a}
-.blk .prog,.bcard .prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
-   white-space:nowrap;color:var(--text)}
-.blk .meta,.bcard .meta{color:var(--muted);white-space:nowrap;font-size:.92em;
-   overflow:hidden;text-overflow:ellipsis;max-width:40%}
-.blk .esp,.bcard .esp{color:var(--warn);font-weight:700;white-space:nowrap}
+/* tabla de bloqueos, comun a la tarjeta y al panel de TV */
+.btab{width:100%;border-collapse:collapse;font-size:.74rem;table-layout:auto}
+.btab th{text-align:left;font-weight:800;font-size:.6rem;text-transform:uppercase;
+   letter-spacing:.06em;color:var(--muted);padding:0 10px 4px 0;
+   border-bottom:1px solid #5a2b3b;white-space:nowrap}
+.btab td{padding:3px 10px 3px 0;border-bottom:1px solid #3f2130;
+   vertical-align:baseline}
+.btab tr:last-child td{border-bottom:none}
+.btab .c-spid{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.btab .c-num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.btab .c-esp{color:var(--warn);font-weight:700;white-space:nowrap}
+.btab .c-el{max-width:170px;overflow:hidden;text-overflow:ellipsis;
+   white-space:nowrap}
+.btab .c-ancha{max-width:260px}
+.rol{display:inline-block;font-size:.6rem;font-weight:800;text-transform:uppercase;
+   padding:1px 6px;border-radius:5px;letter-spacing:.05em;white-space:nowrap}
+.rol.b{background:#7f1d1d;color:#fecaca}
+.rol.w{background:#78350f;color:#fde68a}
 
 /* Panel de bloqueos del Modo TV: va debajo de las tarjetas, en el hueco */
 #bloqueos-tv{display:none}
@@ -204,8 +208,12 @@ body.tv #bloqueos-tv h3{margin:0 0 6px;color:var(--alarm);font-weight:800;
    text-transform:uppercase;letter-spacing:.07em;
    font-size:clamp(.8rem,1.15vw,1.7rem)}
 body.tv .bcard h4{font-size:clamp(.75rem,1.05vw,1.5rem)}
-body.tv .bcard .row{font-size:clamp(.75rem,1.1vw,1.6rem);gap:clamp(8px,.9vw,18px)}
-body.tv .bcard .rol{font-size:clamp(.6rem,.8vw,1.15rem);padding:1px 8px}
+body.tv .btab{font-size:clamp(.7rem,1vw,1.45rem)}
+body.tv .btab th{font-size:clamp(.55rem,.72vw,1.05rem);padding-bottom:5px}
+body.tv .btab td{padding:clamp(2px,.4vh,6px) clamp(8px,.9vw,18px) clamp(2px,.4vh,6px) 0}
+body.tv .btab .c-el{max-width:clamp(150px,14vw,340px)}
+body.tv .btab .c-ancha{max-width:clamp(200px,22vw,520px)}
+body.tv .rol{font-size:clamp(.55rem,.72vw,1.05rem);padding:1px 8px}
 body.tv .nota{font-size:clamp(.7rem,1vw,1.4rem)}
 body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
    grid-template-columns:none}
@@ -230,9 +238,6 @@ body.tv .ichip i{width:clamp(6px,.5vw,10px);height:clamp(6px,.5vw,10px)}
 body.tv .blk{padding:clamp(4px,.7vh,9px) clamp(6px,.7vw,11px);
    margin-top:clamp(6px,1vh,14px);max-height:30vh;overflow:hidden}
 body.tv .blk h3{font-size:clamp(.5rem,.58vw,.85rem);margin-bottom:3px}
-body.tv .blk .row{font-size:clamp(.58rem,.7vw,1rem);gap:clamp(5px,.5vw,9px);
-   padding:2px 0}
-body.tv .blk .rol{font-size:clamp(.46rem,.52vw,.75rem);padding:0 5px}
 
 #offline-overlay{display:none;position:fixed;inset:0;z-index:9999;
    background:rgba(8,12,24,.96);flex-direction:column;align-items:center;
@@ -506,17 +511,48 @@ function discoHTML(i){
 
 // ------------------------------------------------- bloqueos e indicadores
 
-function filaBloqueo(s){
-  const rol = s.rol === "bloquea"
-    ? '<span class="rol b">bloquea</span>'
-    : (s.rol === "espera" ? '<span class="rol w">espera</span>' : "");
-  const meta = [s.host, s.bd].filter(Boolean).map(esc).join(" · ");
-  return '<div class="row">' +
-           '<span class="spid">' + esc(s.spid) + "</span>" + rol +
-           '<span class="prog">' + esc(s.programa || s.login || "—") + "</span>" +
-           (meta ? '<span class="meta">' + meta + "</span>" : "") +
-           '<span class="esp">' + esc(s.espera || "") + "</span>" +
-         "</div>";
+// Columnas de la tabla de bloqueos. `tv:true` = tambien se muestra en la tele,
+// donde hay que ser mucho mas selectivo.
+const COLS_BLOQUEO = [
+  {k:"spid",           t:"SPID",      tv:true,  cls:"c-spid"},
+  {k:"rol",            t:"Rol",       tv:true,  cls:"c-rol"},
+  {k:"bloqueado_por",  t:"Bloq. por", tv:true,  cls:"c-num"},
+  {k:"login",          t:"Login",     tv:false, cls:"c-el"},
+  {k:"programa",       t:"Programa",  tv:true,  cls:"c-el c-ancha"},
+  {k:"host",           t:"Host",      tv:true,  cls:"c-el"},
+  {k:"bd",             t:"BD",        tv:true,  cls:"c-el"},
+  {k:"comando",        t:"Comando",   tv:false, cls:""},
+  {k:"espera",         t:"Espera",    tv:true,  cls:"c-esp"},
+  {k:"recurso",        t:"Recurso",   tv:false, cls:"c-el"},
+  {k:"espera_s",       t:"Tiempo",    tv:true,  cls:"c-num"},
+  {k:"trans_abiertas", t:"Trans.",    tv:false, cls:"c-num"},
+  {k:"estado",         t:"Estado",    tv:false, cls:""}
+];
+
+function celdaBloqueo(s, col){
+  const v = s[col.k];
+  if (col.k === "rol"){
+    if (v === "bloquea") return '<span class="rol b">bloquea</span>';
+    if (v === "espera")  return '<span class="rol w">espera</span>';
+    return "";
+  }
+  if (col.k === "espera_s")       return v == null ? "—" : fmtDur(v);
+  if (col.k === "trans_abiertas") return v == null ? "—" : fmt(v, 0);
+  if (v === null || v === undefined || v === "") return "—";
+  return esc(v);
+}
+
+function tablaBloqueos(lista, soloTV){
+  const cols = COLS_BLOQUEO.filter(c => !soloTV || c.tv);
+  const cab = cols.map(c => "<th>" + esc(c.t) + "</th>").join("");
+  const cuerpo = lista.map(s =>
+    "<tr>" + cols.map(c =>
+      '<td class="' + c.cls + '" title="' + esc(String(s[c.k] == null ? "" : s[c.k])) + '">' +
+      celdaBloqueo(s, c) + "</td>"
+    ).join("") + "</tr>"
+  ).join("");
+  return '<table class="btab"><thead><tr>' + cab + "</tr></thead><tbody>" +
+         cuerpo + "</tbody></table>";
 }
 
 function hayQueMostrarBloqueos(i){
@@ -526,9 +562,9 @@ function hayQueMostrarBloqueos(i){
 // El numero grande viene de la metrica de DPA (muestreo por minuto) y la lista
 // es una foto en vivo. Si el atasco ya se ha deshecho, lo decimos en vez de
 // dejar un numero sin explicacion.
-function contenidoBloqueos(i){
+function contenidoBloqueos(i, soloTV){
   const b = i.bloqueos || [];
-  if (b.length) return b.map(filaBloqueo).join("");
+  if (b.length) return tablaBloqueos(b, soloTV);
   if (i.bloqueos_error){
     return '<div class="nota">No he podido leer el detalle: ' +
            esc(i.bloqueos_error) + "</div>";
@@ -542,7 +578,7 @@ function contenidoBloqueos(i){
 function bloqueosHTML(i){
   if (!hayQueMostrarBloqueos(i)) return "";
   return '<div class="blk"><h3>&#9940; Sesiones bloqueadas</h3>' +
-         contenidoBloqueos(i) + "</div>";
+         contenidoBloqueos(i, false) + "</div>";
 }
 
 // Panel de abajo: solo se ve en Modo TV, y solo si hay algun bloqueo
@@ -561,7 +597,7 @@ function pintarBloqueosTV(insts){
   const bloques = conBloqueo.map(i =>
     '<div class="bcard" style="--cc:' + colorServidor(i.nombre) + '">' +
     "<h4>" + esc(tituloTV(i.nombre)) + "</h4>" +
-    contenidoBloqueos(i) + "</div>"
+    contenidoBloqueos(i, true) + "</div>"
   ).join("");
 
   panel.innerHTML = '<h3>&#9940; Sesiones bloqueadas</h3>' +
