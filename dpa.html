@@ -59,6 +59,9 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
   .cbody > .zona + .zona{border-left:none;padding-left:0;
      border-top:1px solid #24334a;padding-top:10px}
 }
+@media (max-width:560px){
+  .mstrip{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+}
 /* --cc es el color propio de cada servidor, para identificarlo de un vistazo.
    El estado (warn/alarm/offline) lo sobrescribe, asi que el semaforo manda. */
 .card{background:var(--card);border-radius:12px;padding:12px 14px;
@@ -77,23 +80,19 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .status.ok{color:var(--ok)} .status.warn{color:var(--warn)}
 .status.alarm{color:var(--alarm)} .status.off{color:var(--off)}
 
-.svals{display:flex;gap:14px;flex-wrap:wrap}
-.sensor{flex:1 1 150px;min-width:140px;display:flex;flex-direction:column;gap:2px}
-.sensor[data-type="sig"]{order:1}
-.sensor[data-type="qual"]{order:2}
-.label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.value{font-size:2.3rem;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
-.value small{font-size:.95rem;color:var(--muted);font-weight:600;margin-left:3px}
+/* Tira de metricas grandes: todas del mismo tamano y alineadas entre si */
+.mstrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.m{display:flex;flex-direction:column;gap:1px;min-width:0}
+.label{font-size:.66rem;color:var(--muted);text-transform:uppercase;
+   letter-spacing:.07em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.value{font-size:2.4rem;font-weight:800;line-height:1.05;
+   font-variant-numeric:tabular-nums}
+.value small{font-size:.9rem;color:var(--muted);font-weight:600;margin-left:3px}
+.pie{font-size:.66rem;color:var(--muted);white-space:nowrap;overflow:hidden;
+   text-overflow:ellipsis;margin-top:1px}
 .v-ok{color:var(--ok)} .v-warn{color:var(--warn)} .v-alarm{color:var(--alarm)}
 .v-acc{color:var(--accent)} .v-mut{color:var(--muted)}
 .v-txt{color:var(--text)}
-
-.dual{display:flex;gap:16px;align-items:baseline}
-.dual .col{display:flex;flex-direction:column}
-.dual .v2{font-size:1.95rem;font-weight:800;line-height:1.05;
-   font-variant-numeric:tabular-nums}
-.picos{font-size:.7rem;color:var(--muted);margin-top:2px}
-.picos em{font-style:normal;opacity:.7}
 
 /* lista de sesiones bloqueadas */
 .blk{margin-top:10px;border:1px solid var(--alarm);border-radius:9px;
@@ -178,7 +177,7 @@ body.tv{padding:10px 12px;overflow:hidden}
 /* En TV la tarjeta se queda en lo esencial: sesiones, bloqueos e indicadores */
 body.tv #banner,body.tv .card-h .tech,body.tv .upd,
 body.tv .detalle,body.tv .charts,
-body.tv .sensor[data-type="qual"]{display:none}
+body.tv .m-qual{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
 /* la seccion y su rejilla de tarjetas rellenan el alto que se les asigne */
 body.tv .site{display:flex;flex-direction:column;min-height:0}
@@ -188,7 +187,8 @@ body.tv .card{overflow:hidden;min-width:0;display:flex;flex-direction:column;
    justify-content:center;gap:clamp(4px,1vh,14px)}
 body.tv .card-h{justify-content:center;margin-bottom:0}
 body.tv .card-h h2{text-align:center}
-body.tv .svals{justify-content:center}
+body.tv .mstrip{grid-template-columns:repeat(2,minmax(0,1fr));
+   gap:clamp(10px,2vw,40px);justify-items:center;text-align:center}
 /* en TV se cae el reparto en tres zonas: solo queda la primera */
 body.tv .cbody{display:flex;flex-direction:column;align-items:stretch;
    gap:clamp(4px,1vh,14px)}
@@ -223,9 +223,8 @@ body.tv .status{font-size:clamp(.7rem,.95vw,1.3rem)}
 body.tv .label{font-size:clamp(.6rem,.95vw,1.25rem)}
 body.tv .value{font-size:clamp(2rem,4.2vw,7rem);line-height:1.02}
 body.tv .value small{font-size:.4em}
-body.tv .dual .v2{font-size:clamp(1.8rem,3.4vw,6rem)}
-body.tv .picos{font-size:clamp(.6rem,.9vw,1.15rem)}
-body.tv .sensor{align-items:center;text-align:center}
+body.tv .pie{font-size:clamp(.6rem,.85vw,1.1rem)}
+body.tv .m{align-items:center;text-align:center}
 body.tv .pill{font-size:clamp(.6rem,.85vw,1.1rem)}
 /* En TV, indicadores y bloqueos van deliberadamente pequenos: lo que tiene
    que leerse desde lejos son las sesiones. Estos son datos de apoyo, y si
@@ -619,26 +618,24 @@ function indicadoresHTML(i){
 function tarjeta(i){
   const info = NIVEL_INFO[i.nivel] || NIVEL_INFO.caido;
 
-  const act = i.sesiones_activas, blo = i.sesiones_bloqueadas;
-  const bloqueSesiones =
-    '<div class="sensor" data-type="sig">' +
-      '<div class="label">Sesiones</div>' +
-      '<div class="dual">' +
-        '<div class="col"><span class="v2 v-txt">' + fmt(act,0) + "</span>" +
-          '<span class="label">Activas</span></div>' +
-        '<div class="col"><span class="v2 ' + colorBloqueadas(blo) + '">' + fmt(blo,0) + "</span>" +
-          '<span class="label">Bloqueadas</span></div>' +
-      "</div>" +
-      '<div class="picos">Pico 1 h: ' + fmt(i.sesiones_activas_max,0) +
-        " act. · " + fmt(i.sesiones_bloqueadas_max,0) + " bloq.</div>" +
+  const metrica = (clase, etiqueta, valor, color, pie) =>
+    '<div class="m ' + clase + '">' +
+      '<div class="label">' + etiqueta + "</div>" +
+      '<div class="value ' + color + '">' + valor + "</div>" +
+      '<div class="pie">' + pie + "</div>" +
     "</div>";
 
-  const bloqueEspera =
-    '<div class="sensor" data-type="qual">' +
-      '<div class="label">Espera de usuario (1 h)</div>' +
-      '<div class="value ' + colorEspera(i) + '">' + fmt(i.wait_total_hora,0) +
-        "<small>s</small></div>" +
-      '<div class="picos">Pico ' + fmt(i.wait_pico,1) + " s <em>por intervalo de 5 min</em></div>" +
+  const tira =
+    '<div class="mstrip">' +
+      metrica("", "Sesiones activas", fmt(i.sesiones_activas, 0), "v-txt",
+              "Pico 1 h · " + fmt(i.sesiones_activas_max, 0) +
+              " · media " + fmt(i.sesiones_activas_media, 0)) +
+      metrica("", "Bloqueadas", fmt(i.sesiones_bloqueadas, 0),
+              colorBloqueadas(i.sesiones_bloqueadas),
+              "Pico 1 h · " + fmt(i.sesiones_bloqueadas_max, 0)) +
+      metrica("m-qual", "Espera de usuario (1 h)",
+              fmt(i.wait_total_hora, 0) + "<small>s</small>", colorEspera(i),
+              "Pico " + fmt(i.wait_pico, 1) + " s por 5 min") +
     "</div>";
 
   const graficas =
@@ -661,7 +658,7 @@ function tarjeta(i){
       "</div>" +
       '<div class="cbody">' +
         '<div class="zona zona-a">' +
-          '<div class="svals">' + bloqueSesiones + bloqueEspera + "</div>" +
+          tira +
           indicadoresHTML(i) +
           avisosHTML(i) +
         "</div>" +
