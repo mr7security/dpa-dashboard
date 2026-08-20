@@ -1,0 +1,7 @@
+dpa.json
+dpa*.json
+!dpa.json.example
+*.db
+*.pyc
+__pycache__/
+*.log

@@ -1,0 +1,12 @@
+{
+  "url": "http://srvdpa:8123",
+  "usuario": "CAMBIAME",
+  "password": "CAMBIAME",
+
+  "puerto": 9000,
+  "intervalo_segundos": 15,
+  "ventana_minutos": 60,
+  "timeout_segundos": 20,
+
+  "excluir": []
+}

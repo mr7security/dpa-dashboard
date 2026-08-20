@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estado de Bases de Datos</title>
+<style>
+:root{
+  --bg:#0f172a; --card:#1e293b; --card2:#0f1c30;
+  --text:#e2e8f0; --muted:#94a3b8;
+  --ok:#22c55e; --alarm:#ef4444; --warn:#f59e0b; --off:#64748b;
+  --accent:#38bdf8;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:18px 22px;background:var(--bg);color:var(--text);
+     font-family:'Segoe UI',system-ui,sans-serif}
+
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+       margin-bottom:14px;flex-wrap:wrap}
+header .brand{display:flex;align-items:center;gap:14px}
+#logo{height:42px;display:none;background:#fff;border-radius:8px;padding:3px 8px}
+h1{margin:0;font-size:1.3rem;font-weight:800;text-transform:uppercase;
+   letter-spacing:.03em;color:var(--text)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns button{background:var(--card);color:var(--text);border:1px solid #2b3d57;
+   border-radius:8px;padding:6px 12px;font-size:.82rem;cursor:pointer}
+.btns button:hover{border-color:var(--accent)}
+.btns button.on{background:#1d3a55;border-color:var(--accent);color:#fff}
+#clock{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+
+#banner{display:none;background:#3b1f2b;border:1px solid var(--alarm);
+   color:#fecaca;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.9rem}
+
+section.site{background:transparent;border:1px solid var(--sc);border-radius:14px;
+   padding:12px 14px;margin-bottom:14px;
+   background-image:linear-gradient(180deg,color-mix(in srgb,var(--sc) 8%,transparent),transparent 120px)}
+.site-h{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.swatch{width:12px;height:12px;border-radius:3px;background:var(--sc)}
+.site-name{font-weight:800;color:var(--sc);letter-spacing:.04em;font-size:1rem}
+.pill{font-size:.74rem;padding:3px 9px;border-radius:999px;border:1px solid #2b3d57;
+   color:var(--muted);background:var(--card)}
+.pill.ok{color:var(--ok);border-color:#14532d}
+.pill.warn{color:var(--warn);border-color:#78350f}
+.pill.alarm{color:var(--alarm);border-color:#7f1d1d}
+.upd{margin-left:auto;font-size:.75rem;color:var(--muted)}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.card{background:var(--card);border-radius:12px;padding:12px 14px;
+   border-left:4px solid var(--sc)}
+.card.warn{border-left-color:var(--warn)}
+.card.alarm{border-left-color:var(--alarm);animation:blink 1.2s infinite}
+.card.offline{opacity:.7;border-left-color:var(--off)}
+@keyframes blink{50%{background:#3b1f2b}}
+
+.card-h{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.card-h h2{margin:0;font-size:1rem;font-weight:700}
+.card-h .tech{font-size:.72rem;color:var(--muted)}
+.card-h .status{margin-left:auto;font-size:.75rem;font-weight:700}
+.status.ok{color:var(--ok)} .status.warn{color:var(--warn)}
+.status.alarm{color:var(--alarm)} .status.off{color:var(--off)}
+
+.svals{display:flex;gap:14px;flex-wrap:wrap}
+.sensor{flex:1 1 150px;min-width:140px;display:flex;flex-direction:column;gap:2px}
+.sensor[data-type="sig"]{order:1}
+.sensor[data-type="qual"]{order:2}
+.label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.value{font-size:2.3rem;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+.value small{font-size:.95rem;color:var(--muted);font-weight:600;margin-left:3px}
+.v-ok{color:var(--ok)} .v-warn{color:var(--warn)} .v-alarm{color:var(--alarm)}
+.v-acc{color:var(--accent)} .v-mut{color:var(--muted)}
+
+.dual{display:flex;gap:16px;align-items:baseline}
+.dual .col{display:flex;flex-direction:column}
+.dual .v2{font-size:1.95rem;font-weight:800;line-height:1.05;
+   font-variant-numeric:tabular-nums}
+.picos{font-size:.7rem;color:var(--muted);margin-top:2px}
+.picos em{font-style:normal;opacity:.7}
+
+.detalle{margin-top:12px;border-top:1px solid #24334a;padding-top:8px}
+.detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
+.detalle td{padding:3px 0;border-bottom:1px solid #24334a}
+.detalle td:first-child{color:var(--muted);width:42%}
+.alarmas{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.tag{font-size:.66rem;padding:2px 7px;border-radius:6px;border:1px solid #2b3d57;
+   color:var(--muted);background:var(--card2)}
+.tag.ok{color:var(--ok);border-color:#14532d}
+.tag.warn{color:var(--warn);border-color:#78350f}
+.tag.alarm{color:var(--alarm);border-color:#7f1d1d}
+.tag.unk{opacity:.45}
+.avisos{margin-top:8px;font-size:.74rem;color:var(--warn)}
+
+.charts{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.chartblock .clab{font-size:.66rem;color:var(--muted);text-transform:uppercase;
+   letter-spacing:.06em}
+canvas.chart{width:100%;height:52px;display:block}
+
+/* ---------------- Modo TV ---------------- */
+body.tv{padding:10px 12px;overflow:hidden}
+body.tv #banner,body.tv .card-h .tech,body.tv .upd,
+body.tv .detalle,body.tv .chartblock[data-type="qual"]{display:none}
+body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
+body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
+   grid-template-columns:none}
+body.tv .site-name{font-size:clamp(1.4rem,2.3vw,3.2rem)}
+body.tv .card-h h2{font-size:clamp(1.25rem,1.85vw,2.7rem)}
+body.tv .status{font-size:clamp(.7rem,.95vw,1.3rem)}
+body.tv .label{font-size:clamp(.6rem,.95vw,1.25rem)}
+body.tv .value{font-size:clamp(2rem,4.2vw,7rem);line-height:1.02}
+body.tv .value small{font-size:.4em}
+body.tv .dual .v2{font-size:clamp(1.8rem,3.4vw,6rem)}
+body.tv .picos{font-size:clamp(.6rem,.9vw,1.15rem)}
+body.tv .sensor{align-items:center;text-align:center}
+body.tv canvas.chart{height:clamp(16px,3vh,42px)}
+body.tv .pill{font-size:clamp(.6rem,.85vw,1.1rem)}
+
+#offline-overlay{display:none;position:fixed;inset:0;z-index:9999;
+   background:rgba(8,12,24,.96);flex-direction:column;align-items:center;
+   justify-content:center;gap:14px;text-align:center;animation:ovpulse 1.5s infinite}
+@keyframes ovpulse{50%{opacity:.5}}
+#offline-overlay .ic{font-size:clamp(4rem,13vh,11rem)}
+#offline-overlay .t{font-size:clamp(3rem,11vw,10rem);font-weight:900;color:var(--alarm);
+   letter-spacing:.04em}
+#offline-overlay .s{font-size:clamp(1rem,2.4vw,2.4rem);color:var(--muted)}
+#offline-overlay .cron{font-size:clamp(1.4rem,4vw,4rem);font-variant-numeric:tabular-nums}
+body.tv.sincon #offline-overlay{display:flex}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <img id="logo" src="/logo" alt="" onload="this.style.display='block'">
+    <h1>Estado de Bases de Datos</h1>
+  </div>
+  <div class="btns">
+    <button data-h="1">1h</button>
+    <button data-h="6">6h</button>
+    <button data-h="24" class="on">24h</button>
+    <button id="btn-alertas">&#128276; Alertas: OFF</button>
+    <button id="btn-tv">&#128250; Modo TV</button>
+  </div>
+  <div id="clock"></div>
+</header>
+
+<div id="banner"></div>
+<div id="sites"></div>
+
+<div id="offline-overlay">
+  <div class="ic">&#9888;</div>
+  <div class="t">SIN CONEXION</div>
+  <div class="s">No se puede contactar con el servicio del dashboard</div>
+  <div class="cron" id="cron">00:00:00</div>
+</div>
+
+<script>
+"use strict";
+
+const REFRESH_S = 10;
+const HIST_REFRESH_S = 60;
+
+const SECCION = {nombre:"SQL SERVER", color:"#38bdf8"};
+
+const NIVEL_INFO = {
+  ok:      {cls:"ok",    txt:"✔ OK",         card:""},
+  aviso:   {cls:"warn",  txt:"⚠ DEGRADADO",  card:"warn"},
+  critico: {cls:"alarm", txt:"⚠ CRÍTICO", card:"alarm"},
+  caido:   {cls:"off",   txt:"✖ CAÍDO",  card:"offline"}
+};
+
+const CAT_ES = {
+  "CPU":"CPU", "Memory":"Memoria", "Disk":"Disco", "Sessions":"Sesiones",
+  "Waits":"Esperas", "TempDB":"TempDB", "Backups":"Backups",
+  "Network":"Red", "License Compliance":"Licencias"
+};
+const CAT_ORDEN = ["CPU","Memory","Disk","Sessions","Waits","TempDB","Backups","Network","License Compliance"];
+
+let rangeH = 24;
+let alertsOn = false;
+try { alertsOn = localStorage.getItem("dpa_alertas") === "1"; } catch(e){}
+let prevBad = {};
+let histSeries = {};
+let disconnectedSince = null;
+
+// ---------------------------------------------------------------- utilidades
+
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function fmt(v, dec){
+  if (v === null || v === undefined || isNaN(v)) return "—";
+  const d = (dec === undefined) ? (Math.abs(v) >= 100 ? 0 : 1) : dec;
+  return Number(v).toLocaleString("es-ES", {minimumFractionDigits:d, maximumFractionDigits:d});
+}
+
+function fmtDur(seg){
+  if (seg === null || seg === undefined || isNaN(seg)) return "—";
+  if (seg < 60) return fmt(seg,1) + " s";
+  const m = Math.floor(seg/60), s = Math.round(seg%60);
+  return m + " min " + (s ? s + " s" : "");
+}
+
+function colorBloqueadas(v){
+  if (v === null || v === undefined) return "v-mut";
+  if (v >= 5) return "v-alarm";
+  if (v >= 1) return "v-warn";
+  return "v-ok";
+}
+
+function colorNivelCat(lvl){
+  if (lvl === "CRITICAL") return "alarm";
+  if (lvl === "WARNING")  return "warn";
+  if (lvl === "NORMAL")   return "ok";
+  return "unk";
+}
+
+function colorEspera(inst){
+  const lvl = (inst.alarmas || {})["Waits"];
+  if (lvl === "CRITICAL") return "v-alarm";
+  if (lvl === "WARNING")  return "v-warn";
+  return "v-acc";
+}
+
+function tituloLimpio(nombre){
+  return String(nombre || "").replace(/\s+via\s+/i, " · ");
+}
+
+// ------------------------------------------------------------------ detalle
+
+function filas(pares){
+  return pares
+    .filter(p => p[1] !== null && p[1] !== undefined && p[1] !== "" && p[1] !== "—")
+    .map(p => "<tr><td>" + esc(p[0]) + "</td><td>" + p[1] + "</td></tr>")
+    .join("");
+}
+
+function detalleHTML(i){
+  const rec = filas([
+    ["CPU del servidor",       i.cpu != null ? fmt(i.cpu,1) + " %" : null],
+    ["CPU de la instancia",    i.cpu_instancia != null ? fmt(i.cpu_instancia,1) + " %" : null],
+    ["Signal waits",           i.signal_waits != null ? fmt(i.signal_waits,1) + " %" : null],
+    ["Memoria",                i.memoria != null ? fmt(i.memoria,1) + " %" : null],
+    ["Page life expectancy",   i.ple != null ? fmt(i.ple,0) + " s" : null],
+    ["Buffer cache hit",       i.cache_hit != null ? fmt(i.cache_hit,1) + " %" : null],
+    ["Latencia disco lectura", i.disco_lectura != null ? fmt(i.disco_lectura,1) + " ms" : null],
+    ["Latencia disco escritura", i.disco_escritura != null ? fmt(i.disco_escritura,1) + " ms" : null],
+    ["Batch requests",         i.batch_seg != null ? fmt(i.batch_seg,0) + " /s" : null],
+    ["Transacciones",          i.trans_seg != null ? fmt(i.trans_seg,0) + " /s" : null],
+    ["Round-trip",             i.rtt != null ? fmt(i.rtt,1) + " ms" : null]
+  ]);
+
+  const inf = filas([
+    ["Motor",            esc(i.tipo)],
+    ["Availability Group", i.ag ? esc(i.ag) : null],
+    ["Monitor DPA",      esc(i.monitor_estado)],
+    ["Sesiones activas (media 1 h)", i.sesiones_activas_media != null ? fmt(i.sesiones_activas_media,1) : null],
+    ["Espera media (5 min)", i.wait_medio != null ? fmtDur(i.wait_medio) : null],
+    ["Tuning",           i.tabs && i.tabs.tuning ? esc(i.tabs.tuning) : null],
+    ["Salud del AG",     i.tabs && i.tabs.ag ? esc(i.tabs.ag) : null]
+  ]);
+
+  const alarmas = CAT_ORDEN
+    .filter(c => (i.alarmas || {})[c])
+    .map(c => '<span class="tag ' + colorNivelCat(i.alarmas[c]) + '">' +
+              esc(CAT_ES[c] || c) + "</span>")
+    .join("");
+
+  const avisos = (i.avisos && i.avisos.length)
+    ? '<div class="avisos">' + i.avisos.map(esc).join(" · ") + "</div>" : "";
+
+  return '<div class="detalle">' +
+           "<table>" + rec + inf + "</table>" +
+           '<div class="alarmas">' + alarmas + "</div>" +
+           avisos +
+         "</div>";
+}
+
+// -------------------------------------------------------------------- render
+
+function tarjeta(i){
+  const info = NIVEL_INFO[i.nivel] || NIVEL_INFO.caido;
+
+  const act = i.sesiones_activas, blo = i.sesiones_bloqueadas;
+  const bloqueSesiones =
+    '<div class="sensor" data-type="sig">' +
+      '<div class="label">Sesiones</div>' +
+      '<div class="dual">' +
+        '<div class="col"><span class="v2 v-acc">' + fmt(act,0) + "</span>" +
+          '<span class="label">Activas</span></div>' +
+        '<div class="col"><span class="v2 ' + colorBloqueadas(blo) + '">' + fmt(blo,0) + "</span>" +
+          '<span class="label">Bloqueadas</span></div>' +
+      "</div>" +
+      '<div class="picos">Pico 1 h: ' + fmt(i.sesiones_activas_max,0) +
+        " act. · " + fmt(i.sesiones_bloqueadas_max,0) + " bloq.</div>" +
+    "</div>";
+
+  const bloqueEspera =
+    '<div class="sensor" data-type="qual">' +
+      '<div class="label">Espera de usuario (1 h)</div>' +
+      '<div class="value ' + colorEspera(i) + '">' + fmt(i.wait_total_hora,0) +
+        "<small>s</small></div>" +
+      '<div class="picos">Pico ' + fmt(i.wait_pico,1) + " s <em>por intervalo de 5 min</em></div>" +
+    "</div>";
+
+  const graficas =
+    '<div class="charts">' +
+      '<div class="chartblock" data-type="sig"><div class="clab">Sesiones activas</div>' +
+        '<canvas class="chart" data-key="' + i.db_id + '|Active Sessions" data-color="' + SECCION.color + '"></canvas></div>' +
+      '<div class="chartblock" data-type="qual"><div class="clab">Tiempo de espera</div>' +
+        '<canvas class="chart" data-key="' + i.db_id + '|Instance Wait Time" data-color="#a78bfa"></canvas></div>' +
+    "</div>";
+
+  return '<div class="card ' + info.card + '">' +
+      '<div class="card-h">' +
+        "<h2>" + esc(tituloLimpio(i.nombre)) + "</h2>" +
+        '<span class="tech">' + esc(i.tipo || "") + (i.ag ? " · AG" : "") + "</span>" +
+        '<span class="status ' + info.cls + '">' + info.txt + "</span>" +
+      "</div>" +
+      '<div class="svals">' + bloqueSesiones + bloqueEspera + "</div>" +
+      detalleHTML(i) +
+      graficas +
+    "</div>";
+}
+
+function resumenPills(insts){
+  if (!insts.length) return '<span class="pill">Sin instancias</span>';
+  const c = {critico:0, aviso:0, caido:0};
+  insts.forEach(i => { if (c[i.nivel] !== undefined) c[i.nivel]++; });
+  const out = [];
+  if (c.critico) out.push('<span class="pill alarm">⚠ ' + c.critico + " crítico</span>");
+  if (c.aviso)   out.push('<span class="pill warn">⚠ ' + c.aviso + " degradado</span>");
+  if (c.caido)   out.push('<span class="pill">✖ ' + c.caido + " caído</span>");
+  if (!out.length) out.push('<span class="pill ok">✔ Todo correcto</span>');
+  return out.join("");
+}
+
+function render(estado){
+  const insts = estado.instancias || [];
+  const cont = document.getElementById("sites");
+
+  // El servicio responde pero no puede hablar con DPA: avisar sin ocultar datos
+  if (estado.error){
+    const b = document.getElementById("banner");
+    b.style.display = "block";
+    b.textContent = "El colector no puede hablar con DPA: " + estado.error +
+                    ". Los datos que ves pueden estar obsoletos.";
+  }
+
+  const hora = estado.actualizado
+    ? new Date(estado.actualizado * 1000).toLocaleTimeString("es-ES") : "—";
+
+  cont.innerHTML =
+    '<section class="site" style="--sc:' + SECCION.color + '">' +
+      '<div class="site-h">' +
+        '<span class="swatch"></span>' +
+        '<span class="site-name">' + SECCION.nombre + "</span>" +
+        resumenPills(insts) +
+        '<span class="upd">Actualizado ' + esc(hora) + "</span>" +
+      "</div>" +
+      '<div class="cards">' + insts.map(tarjeta).join("") + "</div>" +
+    "</section>";
+
+  pintarTodas();
+  if (document.body.classList.contains("tv")) fitTV();
+  avisarSiEmpeora(insts);
+}
+
+// -------------------------------------------------------------------- alertas
+
+function beep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; g.gain.value = .15;
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); setTimeout(() => { o.stop(); ctx.close(); }, 400);
+  }catch(e){}
+}
+
+function avisarSiEmpeora(insts){
+  insts.forEach(i => {
+    const malo = (i.nivel === "critico" || i.nivel === "caido");
+    if (malo && !prevBad[i.nombre] && alertsOn){
+      beep();
+      try{
+        if (window.Notification && Notification.permission === "granted"){
+          new Notification("DPA: " + i.nombre, {body: (i.avisos || []).join(" · ")});
+        }
+      }catch(e){}
+    }
+    prevBad[i.nombre] = malo;
+  });
+}
+
+// -------------------------------------------------------------------- charts
+
+function drawChart(cv, pts){
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 300, H = cv.clientHeight || 52;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
+
+  const corte = Date.now()/1000 - rangeH*3600;
+  const d = (pts || []).filter(p => p.t >= corte);
+
+  if (d.length < 2){
+    ctx.fillStyle = "#64748b"; ctx.font = "11px Segoe UI";
+    ctx.fillText("Recopilando histórico…", 4, H/2 + 4);
+    return;
+  }
+
+  const PR = 38, PT = 4, PB = 4;
+  const t0 = d[0].t, t1 = d[d.length-1].t;
+  let lo = Math.min.apply(null, d.map(p => p.v));
+  let hi = Math.max.apply(null, d.map(p => p.v));
+  if (hi - lo < 1){ const m = (hi+lo)/2; lo = m - .5; hi = m + .5; }
+  const pad = (hi - lo) * .15; lo -= pad; hi += pad;
+
+  const X = t => PT + (t - t0) / Math.max(1, t1 - t0) * (W - PR - PT);
+  const Y = v => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
+
+  const col = cv.dataset.color || "#38bdf8";
+  ctx.beginPath();
+  d.forEach((p,k) => { const x = X(p.t), y = Y(p.v); k ? ctx.lineTo(x,y) : ctx.moveTo(x,y); });
+  ctx.lineTo(X(t1), H - PB); ctx.lineTo(X(t0), H - PB); ctx.closePath();
+  ctx.fillStyle = col + "22"; ctx.fill();
+
+  ctx.beginPath();
+  d.forEach((p,k) => { const x = X(p.t), y = Y(p.v); k ? ctx.lineTo(x,y) : ctx.moveTo(x,y); });
+  ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
+
+  const maxV = Math.max.apply(null, d.map(p => p.v));
+  const minV = Math.min.apply(null, d.map(p => p.v));
+  ctx.font = "10px Segoe UI"; ctx.fillStyle = "#94a3b8";
+  ctx.fillText(fmt(maxV,1), W - PR + 3, 10);
+  ctx.fillText(fmt(minV,1), W - PR + 3, H - 3);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillText(fmt(d[d.length-1].v,1), W - PR + 3, Math.min(H-12, Math.max(18, Y(d[d.length-1].v) + 3)));
+}
+
+function pintarTodas(){
+  document.querySelectorAll("canvas.chart").forEach(cv => {
+    drawChart(cv, histSeries[cv.dataset.key] || []);
+  });
+}
+
+function tickHist(estado){
+  const insts = (estado && estado.instancias) || [];
+  if (!insts.length) return;
+  const nuevo = {};
+  const peticiones = [];
+  insts.forEach(i => {
+    ["Active Sessions", "Instance Wait Time"].forEach(met => {
+      const clave = i.db_id + "|" + met;
+      nuevo[clave] = histSeries[clave] || [];
+      const url = "/api/historico?db=" + encodeURIComponent(i.db_id) +
+                  "&metrica=" + encodeURIComponent(met) + "&horas=24";
+      peticiones.push(
+        fetch(url).then(r => r.json()).then(j => {
+          nuevo[clave] = j.puntos || [];
+        }).catch(() => {})
+      );
+    });
+  });
+  // reconstruimos el objeto para no acumular instancias que ya no existen
+  Promise.all(peticiones).then(() => { histSeries = nuevo; pintarTodas(); });
+}
+
+// ---------------------------------------------------------------- modo TV
+
+function fitTV(){
+  const cont = document.getElementById("sites");
+  const header = document.querySelector("header");
+  const alto = window.innerHeight - header.offsetHeight - 12;
+  cont.style.height = alto + "px";
+  const secs = [...cont.querySelectorAll("section.site")];
+  secs.forEach(s => { s.style.gridColumn = "1 / -1"; });
+}
+
+function toggleTV(){
+  document.body.classList.toggle("tv");
+  const on = document.body.classList.contains("tv");
+  document.getElementById("btn-tv").classList.toggle("on", on);
+  if (on){
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    fitTV();
+  } else {
+    if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen();
+    document.getElementById("sites").style.height = "";
+  }
+  pintarTodas();
+}
+
+// ------------------------------------------------------------------- ciclo
+
+function pintarDesconexion(){
+  const b = document.getElementById("banner");
+  b.style.display = "block";
+  b.textContent = "No se puede contactar con el servicio del dashboard. " +
+                  "Los datos que ves pueden estar obsoletos.";
+  document.body.classList.add("sincon");
+}
+
+function limpiarDesconexion(){
+  document.getElementById("banner").style.display = "none";
+  document.body.classList.remove("sincon");
+  disconnectedSince = null;
+}
+
+function tick(){
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 8000);
+  fetch("/api/estado", {signal: ctrl.signal})
+    .then(r => r.json())
+    .then(j => {
+      clearTimeout(to);
+      limpiarDesconexion();
+      render(j);
+      const primera = !window.__ultimoEstado;
+      window.__ultimoEstado = j;
+      if (primera) tickHist(j);
+    })
+    .catch(() => {
+      clearTimeout(to);
+      if (!disconnectedSince) disconnectedSince = Date.now();
+      pintarDesconexion();
+    });
+}
+
+function reloj(){
+  document.getElementById("clock").textContent =
+    new Date().toLocaleString("es-ES");
+  if (disconnectedSince){
+    const s = Math.floor((Date.now() - disconnectedSince)/1000);
+    const hh = String(Math.floor(s/3600)).padStart(2,"0");
+    const mm = String(Math.floor(s%3600/60)).padStart(2,"0");
+    const ss = String(s%60).padStart(2,"0");
+    document.getElementById("cron").textContent = hh + ":" + mm + ":" + ss;
+  }
+}
+
+// ------------------------------------------------------------------ arranque
+
+document.querySelectorAll(".btns button[data-h]").forEach(b => {
+  b.addEventListener("click", () => {
+    rangeH = Number(b.dataset.h);
+    document.querySelectorAll(".btns button[data-h]").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    pintarTodas();
+  });
+});
+
+const btnAl = document.getElementById("btn-alertas");
+function pintarBotonAlertas(){
+  btnAl.textContent = "\u{1F514} Alertas: " + (alertsOn ? "ON" : "OFF");
+  btnAl.classList.toggle("on", alertsOn);
+}
+btnAl.addEventListener("click", () => {
+  alertsOn = !alertsOn;
+  try { localStorage.setItem("dpa_alertas", alertsOn ? "1" : "0"); } catch(e){}
+  if (alertsOn && window.Notification && Notification.permission === "default"){
+    Notification.requestPermission();
+  }
+  pintarBotonAlertas();
+});
+pintarBotonAlertas();
+
+document.getElementById("btn-tv").addEventListener("click", toggleTV);
+document.getElementById("logo").addEventListener("error", function(){ this.style.display = "none"; });
+window.addEventListener("resize", () => {
+  if (document.body.classList.contains("tv")) fitTV();
+  pintarTodas();
+});
+
+tick();
+setInterval(tick, REFRESH_S * 1000);
+setInterval(() => tickHist(window.__ultimoEstado), HIST_REFRESH_S * 1000);
+setInterval(reloj, 1000);
+reloj();
+</script>
+</body>
+</html>
