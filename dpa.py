@@ -615,6 +615,7 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "sesiones_bloqueadas": m["sesiones_bloqueadas"]["ultimo"],
         "sesiones_bloqueadas_max": m["sesiones_bloqueadas"]["max"],
         "bloqueos": [],
+        "bloqueos_error": None,
 
         # espera (lo grande, segundo bloque)
         "wait_total_hora": m["wait_time"]["suma"],
@@ -693,6 +694,7 @@ class Monitor(object):
                     log.warning("%s: no pude leer los bloqueos: %s",
                                 meta.get("name"), e)
                     inst["bloqueos"] = []
+                    inst["bloqueos_error"] = str(e)
 
             destino[db_id] = inst
         except Exception as e:  # noqa: BLE001

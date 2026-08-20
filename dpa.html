@@ -44,9 +44,26 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .pill.alarm{color:var(--alarm);border-color:#7f1d1d}
 .upd{margin-left:auto;font-size:.75rem;color:var(--muted)}
 
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+/* Vista normal: un servidor por fila, a todo el ancho */
+.cards{display:grid;grid-template-columns:1fr;gap:12px}
+
+/* y dentro, tres zonas en horizontal */
+.cbody{display:grid;
+   grid-template-columns:minmax(250px,.85fr) minmax(280px,1.15fr) minmax(240px,1fr);
+   gap:18px;align-items:start}
+.zona{min-width:0}
+.cbody > .zona + .zona{border-left:1px solid #24334a;padding-left:18px}
+
+@media (max-width:1100px){
+  .cbody{grid-template-columns:1fr;gap:10px}
+  .cbody > .zona + .zona{border-left:none;padding-left:0;
+     border-top:1px solid #24334a;padding-top:10px}
+}
+/* --cc es el color propio de cada servidor, para identificarlo de un vistazo.
+   El estado (warn/alarm/offline) lo sobrescribe, asi que el semaforo manda. */
 .card{background:var(--card);border-radius:12px;padding:12px 14px;
-   border-left:4px solid var(--sc)}
+   border-left:4px solid var(--cc,var(--sc))}
+.card-h h2{color:var(--cc,var(--text))}
 .card.warn{border-left-color:var(--warn)}
 .card.alarm{border-left-color:var(--alarm);animation:blink 1.2s infinite}
 .card.offline{opacity:.7;border-left-color:var(--off)}
@@ -69,6 +86,7 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .value small{font-size:.95rem;color:var(--muted);font-weight:600;margin-left:3px}
 .v-ok{color:var(--ok)} .v-warn{color:var(--warn)} .v-alarm{color:var(--alarm)}
 .v-acc{color:var(--accent)} .v-mut{color:var(--muted)}
+.v-txt{color:var(--text)}
 
 .dual{display:flex;gap:16px;align-items:baseline}
 .dual .col{display:flex;flex-direction:column}
@@ -101,10 +119,12 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 #bloqueos-tv{display:none}
 .bgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
    gap:4px 26px}
-.bcard h4{margin:0 0 2px;color:var(--warn);font-weight:800;letter-spacing:.04em}
+.bcard h4{margin:0 0 2px;color:var(--cc,var(--warn));font-weight:800;
+   letter-spacing:.04em}
 .bcard .row{display:flex;gap:10px;align-items:baseline;padding:2px 0;
    border-bottom:1px solid #3f2130}
 .bcard .row:last-child{border-bottom:none}
+.nota{color:var(--muted);font-size:.76rem;padding:3px 0;font-style:italic}
 
 /* indicadores por categoria, siempre visibles */
 .ind{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
@@ -119,7 +139,7 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .ichip.alarm i{background:var(--alarm)}
 .ichip.unk{opacity:.45}
 
-.detalle{margin-top:12px;border-top:1px solid #24334a;padding-top:8px}
+.detalle{margin-top:0}
 .detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
 .detalle td{padding:3px 0;border-bottom:1px solid #24334a}
 .detalle td:first-child{color:var(--muted);width:42%}
@@ -132,10 +152,10 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .tag.unk{opacity:.45}
 .avisos{margin-top:8px;font-size:.74rem;color:var(--warn)}
 
-.charts{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.charts{display:flex;flex-direction:column;gap:8px;margin-top:0}
 .chartblock .clab{font-size:.66rem;color:var(--muted);text-transform:uppercase;
    letter-spacing:.06em}
-canvas.chart{width:100%;height:52px;display:block}
+canvas.chart{width:100%;height:64px;display:block}
 
 /* ---------------- Modo TV ---------------- */
 body.tv{padding:10px 12px;overflow:hidden}
@@ -153,6 +173,11 @@ body.tv .card{overflow:hidden;min-width:0;display:flex;flex-direction:column;
 body.tv .card-h{justify-content:center;margin-bottom:0}
 body.tv .card-h h2{text-align:center}
 body.tv .svals{justify-content:center}
+/* en TV se cae el reparto en tres zonas: solo queda la primera */
+body.tv .cbody{display:flex;flex-direction:column;align-items:stretch;
+   gap:clamp(4px,1vh,14px)}
+body.tv .zona-b,body.tv .zona-c{display:none}
+body.tv .cbody > .zona + .zona{border-left:none;padding-left:0}
 body.tv .t-full{display:none}
 body.tv .t-tv{display:inline}
 /* en TV la lista de bloqueos sale del interior de la tarjeta */
@@ -169,6 +194,7 @@ body.tv #bloqueos-tv h3{margin:0 0 6px;color:var(--alarm);font-weight:800;
 body.tv .bcard h4{font-size:clamp(.75rem,1.05vw,1.5rem)}
 body.tv .bcard .row{font-size:clamp(.75rem,1.1vw,1.6rem);gap:clamp(8px,.9vw,18px)}
 body.tv .bcard .rol{font-size:clamp(.6rem,.8vw,1.15rem);padding:1px 8px}
+body.tv .nota{font-size:clamp(.7rem,1vw,1.4rem)}
 body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
    grid-template-columns:none}
 body.tv .site-name{font-size:clamp(1.4rem,2.3vw,3.2rem)}
@@ -243,6 +269,26 @@ const REFRESH_S = 10;
 const HIST_REFRESH_S = 60;
 
 const SECCION = {nombre:"SQL SERVER", color:"#38bdf8"};
+
+// Un color por servidor. Deliberadamente sin verdes, ambares ni rojos: esos
+// estan reservados al semaforo y mezclarlos confundiria.
+const COLORES_SRV = ["#38bdf8", "#818cf8", "#a78bfa", "#e879f9", "#f472b6"];
+const COLOR_SRV_FIJO = {
+  "AQUILES":                      "#38bdf8",  // cian
+  "PROMETEO":                     "#818cf8",  // indigo
+  "SRVPBI":                       "#a78bfa",  // violeta
+  "SRVPRORPDB01 via ATENEA2":     "#e879f9",  // fucsia
+  "SRVPROSCDB1 via SCALEPRODBAO": "#f472b6"   // rosa
+};
+
+function colorServidor(nombre){
+  const n = String(nombre || "");
+  if (COLOR_SRV_FIJO[n]) return COLOR_SRV_FIJO[n];
+  // los que no esten en la lista reciben uno estable a partir del nombre
+  let h = 0;
+  for (let k = 0; k < n.length; k++) h = (h * 31 + n.charCodeAt(k)) >>> 0;
+  return COLORES_SRV[h % COLORES_SRV.length];
+}
 
 const NIVEL_INFO = {
   ok:      {cls:"ok",    txt:"✔ OK",         card:""},
@@ -395,18 +441,36 @@ function filaBloqueo(s){
          "</div>";
 }
 
+function hayQueMostrarBloqueos(i){
+  return (i.bloqueos || []).length > 0 || (i.sesiones_bloqueadas || 0) > 0;
+}
+
+// El numero grande viene de la metrica de DPA (muestreo por minuto) y la lista
+// es una foto en vivo. Si el atasco ya se ha deshecho, lo decimos en vez de
+// dejar un numero sin explicacion.
+function contenidoBloqueos(i){
+  const b = i.bloqueos || [];
+  if (b.length) return b.map(filaBloqueo).join("");
+  if (i.bloqueos_error){
+    return '<div class="nota">No he podido leer el detalle: ' +
+           esc(i.bloqueos_error) + "</div>";
+  }
+  return '<div class="nota">' + fmt(i.sesiones_bloqueadas, 0) +
+         " en el último minuto · ya resueltos, ahora mismo no hay ninguna " +
+         "sesión bloqueando</div>";
+}
+
 // Dentro de la tarjeta: solo se ve en la vista normal
 function bloqueosHTML(i){
-  const b = i.bloqueos || [];
-  if (!b.length) return "";
+  if (!hayQueMostrarBloqueos(i)) return "";
   return '<div class="blk"><h3>&#9940; Sesiones bloqueadas</h3>' +
-         b.map(filaBloqueo).join("") + "</div>";
+         contenidoBloqueos(i) + "</div>";
 }
 
 // Panel de abajo: solo se ve en Modo TV, y solo si hay algun bloqueo
 function pintarBloqueosTV(insts){
   const panel = document.getElementById("bloqueos-tv");
-  const conBloqueo = insts.filter(i => (i.bloqueos || []).length);
+  const conBloqueo = insts.filter(hayQueMostrarBloqueos);
 
   if (!conBloqueo.length){
     panel.innerHTML = "";
@@ -414,9 +478,12 @@ function pintarBloqueosTV(insts){
     return;
   }
 
+  // cada bloque lleva el color de su servidor, para casarlo de un vistazo
+  // con la tarjeta de arriba
   const bloques = conBloqueo.map(i =>
-    '<div class="bcard"><h4>' + esc(tituloTV(i.nombre)) + "</h4>" +
-    i.bloqueos.map(filaBloqueo).join("") + "</div>"
+    '<div class="bcard" style="--cc:' + colorServidor(i.nombre) + '">' +
+    "<h4>" + esc(tituloTV(i.nombre)) + "</h4>" +
+    contenidoBloqueos(i) + "</div>"
   ).join("");
 
   panel.innerHTML = '<h3>&#9940; Sesiones bloqueadas</h3>' +
@@ -443,7 +510,7 @@ function tarjeta(i){
     '<div class="sensor" data-type="sig">' +
       '<div class="label">Sesiones</div>' +
       '<div class="dual">' +
-        '<div class="col"><span class="v2 v-acc">' + fmt(act,0) + "</span>" +
+        '<div class="col"><span class="v2 v-txt">' + fmt(act,0) + "</span>" +
           '<span class="label">Activas</span></div>' +
         '<div class="col"><span class="v2 ' + colorBloqueadas(blo) + '">' + fmt(blo,0) + "</span>" +
           '<span class="label">Bloqueadas</span></div>' +
@@ -468,18 +535,23 @@ function tarjeta(i){
         '<canvas class="chart" data-key="' + i.db_id + '|Instance Wait Time" data-color="#a78bfa"></canvas></div>' +
     "</div>";
 
-  return '<div class="card ' + info.card + '">' +
+  return '<div class="card ' + info.card + '" style="--cc:' +
+      colorServidor(i.nombre) + '">' +
       '<div class="card-h">' +
         '<h2><span class="t-full">' + esc(tituloLimpio(i.nombre)) + "</span>" +
           '<span class="t-tv">' + esc(tituloTV(i.nombre)) + "</span></h2>" +
         '<span class="tech">' + esc(i.tipo || "") + (i.ag ? " · AG" : "") + "</span>" +
         '<span class="status ' + info.cls + '">' + info.txt + "</span>" +
       "</div>" +
-      '<div class="svals">' + bloqueSesiones + bloqueEspera + "</div>" +
+      '<div class="cbody">' +
+        '<div class="zona zona-a">' +
+          '<div class="svals">' + bloqueSesiones + bloqueEspera + "</div>" +
+          indicadoresHTML(i) +
+        "</div>" +
+        '<div class="zona zona-b">' + detalleHTML(i) + "</div>" +
+        '<div class="zona zona-c">' + graficas + "</div>" +
+      "</div>" +
       bloqueosHTML(i) +
-      indicadoresHTML(i) +
-      detalleHTML(i) +
-      graficas +
     "</div>";
 }
 
