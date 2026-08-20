@@ -369,14 +369,18 @@ def evaluar_estado(inst):
             subir("aviso")
             avisos.append("%d sesion(es) bloqueada(s)" % int(bloq))
 
-    for clave, etiqueta in (("tuning", "Tuning"), ("ag", "Availability Group")):
-        lvl = (inst.get("tabs") or {}).get(clave)
-        if lvl == "CRITICAL":
-            subir("critico")
-            avisos.append("%s en critico" % etiqueta)
-        elif lvl == "WARNING":
-            subir("aviso")
-            avisos.append("%s en aviso" % etiqueta)
+    # Tuning queda FUERA del semaforo a proposito: en DPA "tuning critico"
+    # significa que hay consejos de optimizacion pendientes, no que la
+    # instancia este mal. Como todas las instancias suelen tenerlos, incluirlo
+    # dejaria el panel en rojo permanente y el color dejaria de informar.
+    # Sigue visible en el detalle de la tarjeta.
+    lvl_ag = (inst.get("tabs") or {}).get("ag")
+    if lvl_ag == "CRITICAL":
+        subir("critico")
+        avisos.append("Availability Group en critico")
+    elif lvl_ag == "WARNING":
+        subir("aviso")
+        avisos.append("Availability Group en aviso")
 
     return nivel, avisos
 
