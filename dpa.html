@@ -28,6 +28,10 @@ h1{margin:0;font-size:1.3rem;font-weight:800;text-transform:uppercase;
 .btns button.on{background:#1d3a55;border-color:var(--accent);color:#fff}
 #clock{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
 
+footer{margin-top:16px;padding:10px 2px 2px;border-top:1px solid #24334a;
+   text-align:center;font-size:.7rem;color:var(--muted);letter-spacing:.1em;
+   text-transform:uppercase;opacity:.75}
+
 #banner{display:none;background:#3b1f2b;border:1px solid var(--alarm);
    color:#fecaca;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.9rem}
 
@@ -136,7 +140,8 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .nota{color:var(--muted);font-size:.76rem;padding:3px 0;font-style:italic}
 
 /* indicadores por categoria, siempre visibles */
-.ind{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.ind{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;justify-content:center}
+.zona-a .avisos{justify-content:center}
 .ichip{display:flex;align-items:center;gap:6px;font-size:.66rem;
    text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
    background:var(--card2);border:1px solid #2b3d57;border-radius:7px;
@@ -211,6 +216,8 @@ body.tv .site .cards{flex:1;min-height:0}
    tarjeta se desplaza segun cuantos avisos tenga. Se alinea todo arriba y los
    avisos se empujan al fondo, asi los numeros grandes quedan a la misma
    altura en las cinco. */
+body.tv footer{margin-top:8px;padding:5px 0 0;
+   font-size:clamp(.5rem,.65vw,.95rem)}
 body.tv .card{overflow:hidden;min-width:0;display:flex;flex-direction:column;
    justify-content:flex-start;gap:clamp(4px,1vh,14px)}
 body.tv .cbody{flex:1;min-height:0;justify-content:flex-start}
@@ -301,6 +308,8 @@ body.tv.sincon #offline-overlay{display:flex}
 <div id="banner"></div>
 <div id="sites"></div>
 <div id="bloqueos-tv"></div>
+
+<footer>SGP · Departamento de IT</footer>
 
 <div id="offline-overlay">
   <div class="ic">&#9888;</div>
@@ -912,7 +921,9 @@ function fitTV(){
   const header = document.querySelector("header");
   const panel = document.getElementById("bloqueos-tv");
 
-  const disponible = window.innerHeight - header.offsetHeight - 14;
+  const pie = document.querySelector("footer");
+  const disponible = window.innerHeight - header.offsetHeight -
+                     (pie ? pie.offsetHeight : 0) - 16;
   const hayPanel = panel && panel.style.display !== "none" && panel.innerHTML;
 
   if (hayPanel){
