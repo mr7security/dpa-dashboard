@@ -112,7 +112,9 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .btab .c-esp{color:var(--warn);font-weight:700;white-space:nowrap}
 .btab .c-el{max-width:170px;overflow:hidden;text-overflow:ellipsis;
    white-space:nowrap}
-.btab .c-ancha{max-width:260px}
+/* la columna de programa absorbe el ancho sobrante: si no, el navegador lo
+   reparte entre todas y aparecen huecos enormes antes de la ultima */
+.btab .c-ancha{width:99%;max-width:none}
 .rol{display:inline-block;font-size:.6rem;font-weight:800;text-transform:uppercase;
    padding:1px 6px;border-radius:5px;letter-spacing:.05em;white-space:nowrap}
 .rol.b{background:#7f1d1d;color:#fecaca}
@@ -182,9 +184,15 @@ body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
 /* la seccion y su rejilla de tarjetas rellenan el alto que se les asigne */
 body.tv .site{display:flex;flex-direction:column;min-height:0}
 body.tv .site .cards{flex:1;min-height:0}
-/* tarjetas homogeneas: mismo alto, contenido centrado, nada que sobresalga */
+/* Tarjetas homogeneas. Clave: NO centrar el contenido, porque entonces cada
+   tarjeta se desplaza segun cuantos avisos tenga. Se alinea todo arriba y los
+   avisos se empujan al fondo, asi los numeros grandes quedan a la misma
+   altura en las cinco. */
 body.tv .card{overflow:hidden;min-width:0;display:flex;flex-direction:column;
-   justify-content:center;gap:clamp(4px,1vh,14px)}
+   justify-content:flex-start;gap:clamp(4px,1vh,14px)}
+body.tv .cbody{flex:1;min-height:0;justify-content:flex-start}
+body.tv .zona-a{display:flex;flex-direction:column;flex:1;min-height:0}
+body.tv .avisos{margin-top:auto;justify-content:center}
 body.tv .card-h{justify-content:center;margin-bottom:0}
 body.tv .card-h h2{text-align:center}
 body.tv .mstrip{grid-template-columns:repeat(2,minmax(0,1fr));
@@ -212,7 +220,7 @@ body.tv .btab{font-size:clamp(.7rem,1vw,1.45rem)}
 body.tv .btab th{font-size:clamp(.55rem,.72vw,1.05rem);padding-bottom:5px}
 body.tv .btab td{padding:clamp(2px,.4vh,6px) clamp(8px,.9vw,18px) clamp(2px,.4vh,6px) 0}
 body.tv .btab .c-el{max-width:clamp(150px,14vw,340px)}
-body.tv .btab .c-ancha{max-width:clamp(200px,22vw,520px)}
+body.tv .btab .c-ancha{max-width:none}
 body.tv .rol{font-size:clamp(.55rem,.72vw,1.05rem);padding:1px 8px}
 body.tv .nota{font-size:clamp(.7rem,1vw,1.4rem)}
 body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
@@ -543,7 +551,8 @@ function celdaBloqueo(s, col){
 
 function tablaBloqueos(lista, soloTV){
   const cols = COLS_BLOQUEO.filter(c => !soloTV || c.tv);
-  const cab = cols.map(c => "<th>" + esc(c.t) + "</th>").join("");
+  const cab = cols.map(c =>
+    '<th class="' + c.cls + '">' + esc(c.t) + "</th>").join("");
   const cuerpo = lista.map(s =>
     "<tr>" + cols.map(c =>
       '<td class="' + c.cls + '" title="' + esc(String(s[c.k] == null ? "" : s[c.k])) + '">' +
