@@ -131,6 +131,7 @@ body.tv #banner,body.tv .card-h .tech,body.tv .upd,
 body.tv .detalle,body.tv .charts,
 body.tv .sensor[data-type="qual"]{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
+body.tv .card{overflow:hidden;min-width:0}
 body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
    grid-template-columns:none}
 body.tv .site-name{font-size:clamp(1.4rem,2.3vw,3.2rem)}
@@ -143,15 +144,20 @@ body.tv .dual .v2{font-size:clamp(1.8rem,3.4vw,6rem)}
 body.tv .picos{font-size:clamp(.6rem,.9vw,1.15rem)}
 body.tv .sensor{align-items:center;text-align:center}
 body.tv .pill{font-size:clamp(.6rem,.85vw,1.1rem)}
-body.tv .ind{gap:clamp(6px,.8vw,16px);justify-content:center;
-   margin-top:clamp(8px,1.5vh,22px)}
-body.tv .ichip{font-size:clamp(.6rem,.95vw,1.35rem);padding:4px 12px;
-   gap:clamp(5px,.6vw,10px)}
-body.tv .ichip i{width:clamp(8px,.85vw,16px);height:clamp(8px,.85vw,16px)}
-body.tv .blk{padding:clamp(6px,1vh,14px) clamp(8px,1vw,16px)}
-body.tv .blk h3{font-size:clamp(.6rem,.9vw,1.25rem)}
-body.tv .blk .row{font-size:clamp(.7rem,1.1vw,1.6rem);gap:clamp(6px,.8vw,14px)}
-body.tv .blk .rol{font-size:clamp(.55rem,.8vw,1.15rem)}
+/* En TV, indicadores y bloqueos van deliberadamente pequenos: lo que tiene
+   que leerse desde lejos son las sesiones. Estos son datos de apoyo, y si
+   crecen deforman la tarjeta. */
+body.tv .ind{gap:clamp(4px,.5vw,9px);justify-content:center;
+   margin-top:clamp(6px,1vh,14px)}
+body.tv .ichip{font-size:clamp(.5rem,.6vw,.9rem);padding:2px 7px;
+   gap:clamp(4px,.35vw,6px)}
+body.tv .ichip i{width:clamp(6px,.5vw,10px);height:clamp(6px,.5vw,10px)}
+body.tv .blk{padding:clamp(4px,.7vh,9px) clamp(6px,.7vw,11px);
+   margin-top:clamp(6px,1vh,14px);max-height:30vh;overflow:hidden}
+body.tv .blk h3{font-size:clamp(.5rem,.58vw,.85rem);margin-bottom:3px}
+body.tv .blk .row{font-size:clamp(.58rem,.7vw,1rem);gap:clamp(5px,.5vw,9px);
+   padding:2px 0}
+body.tv .blk .rol{font-size:clamp(.46rem,.52vw,.75rem);padding:0 5px}
 
 #offline-overlay{display:none;position:fixed;inset:0;z-index:9999;
    background:rgba(8,12,24,.96);flex-direction:column;align-items:center;
