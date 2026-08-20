@@ -55,6 +55,7 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .card-h{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .card-h h2{margin:0;font-size:1rem;font-weight:700}
 .card-h .tech{font-size:.72rem;color:var(--muted)}
+.t-tv{display:none}
 .card-h .status{margin-left:auto;font-size:.75rem;font-weight:700}
 .status.ok{color:var(--ok)} .status.warn{color:var(--warn)}
 .status.alarm{color:var(--alarm)} .status.off{color:var(--off)}
@@ -84,16 +85,26 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .blk .row{display:flex;gap:9px;align-items:baseline;font-size:.76rem;
    padding:3px 0;border-bottom:1px solid #3f2130}
 .blk .row:last-child{border-bottom:none}
-.blk .spid{font-weight:800;font-variant-numeric:tabular-nums;min-width:3.2em}
-.blk .rol{font-size:.6rem;font-weight:800;text-transform:uppercase;
-   padding:1px 6px;border-radius:5px;letter-spacing:.05em}
-.blk .rol.b{background:#7f1d1d;color:#fecaca}
-.blk .rol.w{background:#78350f;color:#fde68a}
-.blk .prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+.blk .spid,.bcard .spid{font-weight:800;font-variant-numeric:tabular-nums;
+   min-width:3.2em}
+.blk .rol,.bcard .rol{font-size:.6rem;font-weight:800;text-transform:uppercase;
+   padding:1px 6px;border-radius:5px;letter-spacing:.05em;flex:none}
+.blk .rol.b,.bcard .rol.b{background:#7f1d1d;color:#fecaca}
+.blk .rol.w,.bcard .rol.w{background:#78350f;color:#fde68a}
+.blk .prog,.bcard .prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
    white-space:nowrap;color:var(--text)}
-.blk .meta{color:var(--muted);white-space:nowrap;font-size:.92em;
+.blk .meta,.bcard .meta{color:var(--muted);white-space:nowrap;font-size:.92em;
    overflow:hidden;text-overflow:ellipsis;max-width:40%}
-.blk .esp{color:var(--warn);font-weight:700;white-space:nowrap}
+.blk .esp,.bcard .esp{color:var(--warn);font-weight:700;white-space:nowrap}
+
+/* Panel de bloqueos del Modo TV: va debajo de las tarjetas, en el hueco */
+#bloqueos-tv{display:none}
+.bgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+   gap:4px 26px}
+.bcard h4{margin:0 0 2px;color:var(--warn);font-weight:800;letter-spacing:.04em}
+.bcard .row{display:flex;gap:10px;align-items:baseline;padding:2px 0;
+   border-bottom:1px solid #3f2130}
+.bcard .row:last-child{border-bottom:none}
 
 /* indicadores por categoria, siempre visibles */
 .ind{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
@@ -133,7 +144,27 @@ body.tv #banner,body.tv .card-h .tech,body.tv .upd,
 body.tv .detalle,body.tv .charts,
 body.tv .sensor[data-type="qual"]{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
-body.tv .card{overflow:hidden;min-width:0}
+/* tarjetas homogeneas: mismo alto, contenido centrado, nada que sobresalga */
+body.tv .card{overflow:hidden;min-width:0;display:flex;flex-direction:column;
+   justify-content:center;gap:clamp(4px,1vh,14px)}
+body.tv .card-h{justify-content:center;margin-bottom:0}
+body.tv .card-h h2{text-align:center}
+body.tv .svals{justify-content:center}
+body.tv .t-full{display:none}
+body.tv .t-tv{display:inline}
+/* en TV la lista de bloqueos sale del interior de la tarjeta */
+body.tv .card .blk{display:none}
+
+body.tv #bloqueos-tv{display:block;margin-top:10px;border:1px solid var(--alarm);
+   border-radius:12px;background:#2a1520;
+   padding:clamp(6px,1vh,14px) clamp(10px,1vw,20px);
+   max-height:40vh;overflow:hidden}
+body.tv #bloqueos-tv h3{margin:0 0 6px;color:var(--alarm);font-weight:800;
+   text-transform:uppercase;letter-spacing:.07em;
+   font-size:clamp(.8rem,1.15vw,1.7rem)}
+body.tv .bcard h4{font-size:clamp(.75rem,1.05vw,1.5rem)}
+body.tv .bcard .row{font-size:clamp(.75rem,1.1vw,1.6rem);gap:clamp(8px,.9vw,18px)}
+body.tv .bcard .rol{font-size:clamp(.6rem,.8vw,1.15rem);padding:1px 8px}
 body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
    grid-template-columns:none}
 body.tv .site-name{font-size:clamp(1.4rem,2.3vw,3.2rem)}
@@ -192,6 +223,7 @@ body.tv.sincon #offline-overlay{display:flex}
 
 <div id="banner"></div>
 <div id="sites"></div>
+<div id="bloqueos-tv"></div>
 
 <div id="offline-overlay">
   <div class="ic">&#9888;</div>
@@ -280,6 +312,20 @@ function tituloLimpio(nombre){
   return String(nombre || "").replace(/\s+via\s+/i, " · ");
 }
 
+// En Modo TV el titulo se acorta: de "SRVPRORPDB01 via ATENEA2" queda
+// "ATENEA2". Por defecto se queda con lo que hay detras de "via"; para los
+// casos en que ese nombre tampoco convence, se pone aqui la excepcion.
+const ALIAS_TV = {
+  "SRVPROSCDB1 via SCALEPRODBAO": "SCALEPROD"
+};
+
+function tituloTV(nombre){
+  const n = String(nombre || "");
+  if (ALIAS_TV[n]) return ALIAS_TV[n];
+  const m = n.match(/\s+via\s+(.+)$/i);
+  return m ? m[1].trim() : n;
+}
+
 // ------------------------------------------------------------------ detalle
 
 function filas(pares){
@@ -332,22 +378,46 @@ function detalleHTML(i){
 
 // ------------------------------------------------- bloqueos e indicadores
 
+function filaBloqueo(s){
+  const rol = s.rol === "bloquea"
+    ? '<span class="rol b">bloquea</span>'
+    : (s.rol === "espera" ? '<span class="rol w">espera</span>' : "");
+  const meta = [s.host, s.bd].filter(Boolean).map(esc).join(" · ");
+  return '<div class="row">' +
+           '<span class="spid">' + esc(s.spid) + "</span>" + rol +
+           '<span class="prog">' + esc(s.programa || s.login || "—") + "</span>" +
+           (meta ? '<span class="meta">' + meta + "</span>" : "") +
+           '<span class="esp">' + esc(s.espera || "") + "</span>" +
+         "</div>";
+}
+
+// Dentro de la tarjeta: solo se ve en la vista normal
 function bloqueosHTML(i){
   const b = i.bloqueos || [];
   if (!b.length) return "";
-  const filas = b.map(s => {
-    const rol = s.rol === "bloquea"
-      ? '<span class="rol b">bloquea</span>'
-      : (s.rol === "espera" ? '<span class="rol w">espera</span>' : "");
-    const meta = [s.host, s.bd].filter(Boolean).map(esc).join(" · ");
-    return '<div class="row">' +
-             '<span class="spid">' + esc(s.spid) + "</span>" + rol +
-             '<span class="prog">' + esc(s.programa || s.login || "—") + "</span>" +
-             (meta ? '<span class="meta">' + meta + "</span>" : "") +
-             '<span class="esp">' + esc(s.espera || "") + "</span>" +
-           "</div>";
-  }).join("");
-  return '<div class="blk"><h3>&#9940; Sesiones bloqueadas</h3>' + filas + "</div>";
+  return '<div class="blk"><h3>&#9940; Sesiones bloqueadas</h3>' +
+         b.map(filaBloqueo).join("") + "</div>";
+}
+
+// Panel de abajo: solo se ve en Modo TV, y solo si hay algun bloqueo
+function pintarBloqueosTV(insts){
+  const panel = document.getElementById("bloqueos-tv");
+  const conBloqueo = insts.filter(i => (i.bloqueos || []).length);
+
+  if (!conBloqueo.length){
+    panel.innerHTML = "";
+    panel.style.display = "none";
+    return;
+  }
+
+  const bloques = conBloqueo.map(i =>
+    '<div class="bcard"><h4>' + esc(tituloTV(i.nombre)) + "</h4>" +
+    i.bloqueos.map(filaBloqueo).join("") + "</div>"
+  ).join("");
+
+  panel.innerHTML = '<h3>&#9940; Sesiones bloqueadas</h3>' +
+                    '<div class="bgrid">' + bloques + "</div>";
+  panel.style.display = "";  // vuelve a mandar el CSS (oculto salvo en TV)
 }
 
 function indicadoresHTML(i){
@@ -396,7 +466,8 @@ function tarjeta(i){
 
   return '<div class="card ' + info.card + '">' +
       '<div class="card-h">' +
-        "<h2>" + esc(tituloLimpio(i.nombre)) + "</h2>" +
+        '<h2><span class="t-full">' + esc(tituloLimpio(i.nombre)) + "</span>" +
+          '<span class="t-tv">' + esc(tituloTV(i.nombre)) + "</span></h2>" +
         '<span class="tech">' + esc(i.tipo || "") + (i.ag ? " · AG" : "") + "</span>" +
         '<span class="status ' + info.cls + '">' + info.txt + "</span>" +
       "</div>" +
@@ -446,6 +517,7 @@ function render(estado){
       '<div class="cards">' + insts.map(tarjeta).join("") + "</div>" +
     "</section>";
 
+  pintarBloqueosTV(insts);
   pintarTodas();
   if (document.body.classList.contains("tv")) fitTV();
   avisarSiEmpeora(insts);
@@ -558,10 +630,19 @@ function tickHist(estado){
 function fitTV(){
   const cont = document.getElementById("sites");
   const header = document.querySelector("header");
-  const alto = window.innerHeight - header.offsetHeight - 12;
-  cont.style.height = alto + "px";
-  const secs = [...cont.querySelectorAll("section.site")];
-  secs.forEach(s => { s.style.gridColumn = "1 / -1"; });
+  const panel = document.getElementById("bloqueos-tv");
+
+  // el panel de bloqueos se lleva lo que necesite; las tarjetas, el resto
+  cont.style.height = "";
+  const panelAlto = (panel && panel.style.display !== "none")
+    ? panel.offsetHeight + 10 : 0;
+
+  const alto = window.innerHeight - header.offsetHeight - panelAlto - 14;
+  cont.style.height = Math.max(140, alto) + "px";
+
+  [...cont.querySelectorAll("section.site")].forEach(s => {
+    s.style.gridColumn = "1 / -1";
+  });
 }
 
 function toggleTV(){
