@@ -144,6 +144,9 @@ body.tv #banner,body.tv .card-h .tech,body.tv .upd,
 body.tv .detalle,body.tv .charts,
 body.tv .sensor[data-type="qual"]{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
+/* la seccion y su rejilla de tarjetas rellenan el alto que se les asigne */
+body.tv .site{display:flex;flex-direction:column;min-height:0}
+body.tv .site .cards{flex:1;min-height:0}
 /* tarjetas homogeneas: mismo alto, contenido centrado, nada que sobresalga */
 body.tv .card{overflow:hidden;min-width:0;display:flex;flex-direction:column;
    justify-content:center;gap:clamp(4px,1vh,14px)}
@@ -155,10 +158,11 @@ body.tv .t-tv{display:inline}
 /* en TV la lista de bloqueos sale del interior de la tarjeta */
 body.tv .card .blk{display:none}
 
-body.tv #bloqueos-tv{display:block;margin-top:10px;border:1px solid var(--alarm);
-   border-radius:12px;background:#2a1520;
-   padding:clamp(6px,1vh,14px) clamp(10px,1vw,20px);
-   max-height:40vh;overflow:hidden}
+body.tv #bloqueos-tv{display:flex;flex-direction:column;margin-top:10px;
+   border:1px solid var(--alarm);border-radius:12px;background:#2a1520;
+   padding:clamp(6px,1vh,14px) clamp(10px,1vw,20px);overflow:hidden}
+body.tv #bloqueos-tv .bgrid{flex:1;min-height:0;overflow:hidden;
+   align-content:start}
 body.tv #bloqueos-tv h3{margin:0 0 6px;color:var(--alarm);font-weight:800;
    text-transform:uppercase;letter-spacing:.07em;
    font-size:clamp(.8rem,1.15vw,1.7rem)}
@@ -632,13 +636,21 @@ function fitTV(){
   const header = document.querySelector("header");
   const panel = document.getElementById("bloqueos-tv");
 
-  // el panel de bloqueos se lleva lo que necesite; las tarjetas, el resto
-  cont.style.height = "";
-  const panelAlto = (panel && panel.style.display !== "none")
-    ? panel.offsetHeight + 10 : 0;
+  const disponible = window.innerHeight - header.offsetHeight - 14;
+  const hayPanel = panel && panel.style.display !== "none" && panel.innerHTML;
 
-  const alto = window.innerHeight - header.offsetHeight - panelAlto - 14;
-  cont.style.height = Math.max(140, alto) + "px";
+  if (hayPanel){
+    // Las tarjetas se quedan con lo justo y el panel se lleva TODO el resto:
+    // es donde hay texto que leer, asi que es donde interesa el espacio.
+    cont.style.height = "";
+    panel.style.height = "";
+    const usado = cont.offsetHeight;
+    panel.style.height = Math.max(140, disponible - usado - 10) + "px";
+  } else {
+    // Sin bloqueos, las tarjetas ocupan la pantalla entera.
+    panel.style.height = "";
+    cont.style.height = disponible + "px";
+  }
 
   [...cont.querySelectorAll("section.site")].forEach(s => {
     s.style.gridColumn = "1 / -1";
