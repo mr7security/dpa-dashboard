@@ -1,7 +1,11 @@
 {
-  "url": "http://srvdpa:8123",
+  "_comentario_url": "Usa https (puerto 8124) si puedes: con http la contrasena viaja en claro. Pon la IP si el servidor no resuelve el nombre.",
+  "url": "https://10.0.0.136:8124",
   "usuario": "CAMBIAME",
   "password": "CAMBIAME",
+
+  "_comentario_ssl": "false = no verifica el certificado (DPA suele traerlo autofirmado). El trafico va cifrado igualmente.",
+  "verificar_ssl": false,
 
   "puerto": 9000,
   "intervalo_segundos": 30,

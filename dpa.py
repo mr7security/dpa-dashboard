@@ -21,6 +21,7 @@ import logging
 import mimetypes
 import os
 import re
+import ssl
 import sys
 import threading
 import time
@@ -181,7 +182,7 @@ class ClienteDPA(object):
     RE_CSRF_VAL = re.compile(
         r'\b(?:value|content)\s*=\s*["\']([^"\']*)["\']', re.I)
 
-    def __init__(self, url, usuario, password, timeout=20):
+    def __init__(self, url, usuario, password, timeout=20, verificar_ssl=False):
         self.base = url.rstrip("/")
         self.usuario = usuario
         self.password = password
@@ -189,12 +190,26 @@ class ClienteDPA(object):
         self._lock = threading.Lock()
         self._opener = None
 
+        # DPA suele venir con certificado autofirmado. Si se usa https y no se
+        # ha instalado un certificado de confianza, hay que relajar la
+        # verificacion; el trafico sigue yendo cifrado, que es lo que importa
+        # para que la contrasena no viaje en claro.
+        if self.base.lower().startswith("https") and not verificar_ssl:
+            self._ctx = ssl.create_default_context()
+            self._ctx.check_hostname = False
+            self._ctx.verify_mode = ssl.CERT_NONE
+            log.info("https sin verificar el certificado (autofirmado)")
+        else:
+            self._ctx = None
+
     # -- infraestructura -----------------------------------------------------
 
     def _nuevo_opener(self):
         cj = http.cookiejar.CookieJar()
-        op = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(cj))
+        manejadores = [urllib.request.HTTPCookieProcessor(cj)]
+        if self._ctx is not None:
+            manejadores.append(urllib.request.HTTPSHandler(context=self._ctx))
+        op = urllib.request.build_opener(*manejadores)
         op.addheaders = [("User-Agent", USER_AGENT)]
         return op
 
@@ -735,7 +750,8 @@ class Monitor(object):
     def __init__(self, cfg):
         self.cfg = cfg
         self.cliente = ClienteDPA(cfg["url"], cfg["usuario"], cfg["password"],
-                                  timeout=cfg.get("timeout_segundos", 20))
+                                  timeout=cfg.get("timeout_segundos", 20),
+                                  verificar_ssl=cfg.get("verificar_ssl", False))
         self.intervalo = int(cfg.get("intervalo_segundos", 15))
         self.ventana_min = int(cfg.get("ventana_minutos", 60))
         self.excluir = set(cfg.get("excluir", []))
