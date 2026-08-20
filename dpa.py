@@ -59,6 +59,20 @@ METRICAS = {
     "Batch Requests Per Sec": "batch_seg",
     "Transaction Rate": "trans_seg",
     "Round-trip Time (ms)": "rtt",
+
+    # Backups. Unidades verificadas contra la GUI de DPA (pestana Resources):
+    #   sin_full -> DIAS, sin_log -> HORAS, logs_sin_archivar -> MB,
+    #   backup_total -> GB, backups_activos -> numero de trabajos
+    "Running Backups": "backups_activos",
+    "Longest Time for a DB without a Successful Full Backup": "sin_full_dias",
+    "Longest Time for a DB without a Successful Transaction Log Backup": "sin_log_horas",
+    "Size of Transaction Logs Not Yet Archived": "logs_sin_archivar_mb",
+    "Sum of All Backup Assets Required for Recovery of All DBs": "backup_total_gb",
+
+    # TempDB. tempdb_libre -> MB, tempdb_log_libre -> MB, el pct -> %
+    "TempDB Free Space": "tempdb_libre_mb",
+    "TempDB Free Log Size": "tempdb_log_libre_mb",
+    "TempDB Free Log Size Percentage": "tempdb_log_libre_pct",
 }
 
 # Categorias de alarma que devuelve DPA. El orden de pintado vive en
@@ -635,6 +649,18 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "batch_seg": m["batch_seg"]["ultimo"],
         "trans_seg": m["trans_seg"]["ultimo"],
         "rtt": m["rtt"]["ultimo"],
+
+        # backups
+        "backups_activos": m["backups_activos"]["ultimo"],
+        "sin_full_dias": m["sin_full_dias"]["ultimo"],
+        "sin_log_horas": m["sin_log_horas"]["ultimo"],
+        "logs_sin_archivar_mb": m["logs_sin_archivar_mb"]["ultimo"],
+        "backup_total_gb": m["backup_total_gb"]["ultimo"],
+
+        # tempdb
+        "tempdb_libre_mb": m["tempdb_libre_mb"]["ultimo"],
+        "tempdb_log_libre_mb": m["tempdb_log_libre_mb"]["ultimo"],
+        "tempdb_log_libre_pct": m["tempdb_log_libre_pct"]["ultimo"],
 
         "alarmas": alarmas,
         "tabs": {

@@ -140,6 +140,10 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .ichip.unk{opacity:.45}
 
 .detalle{margin-top:0}
+.detalle .subt{font-size:.64rem;text-transform:uppercase;letter-spacing:.08em;
+   color:var(--muted);font-weight:800;margin:10px 0 3px;opacity:.75}
+.detalle .subt:first-child{margin-top:0}
+.zona-c .detalle{margin-bottom:12px}
 .detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
 .detalle td{padding:3px 0;border-bottom:1px solid #24334a}
 .detalle td:first-child{color:var(--muted);width:42%}
@@ -378,6 +382,20 @@ function tituloTV(nombre){
 
 // ------------------------------------------------------------------ detalle
 
+// Valor con color segun umbrales. `invertido` para las metricas en las que
+// "menos es peor" (espacio libre, porcentajes de hueco).
+function val(v, unidad, aviso, critico, invertido){
+  if (v === null || v === undefined) return null;
+  const dec = unidad === "%" ? 0 : undefined;
+  const txt = fmt(v, dec) + (unidad ? " " + unidad : "");
+  if (aviso === undefined) return txt;
+  const malo = invertido ? (v <= critico) : (v >= critico);
+  const regular = invertido ? (v <= aviso) : (v >= aviso);
+  if (malo)    return '<span class="v-alarm">' + txt + "</span>";
+  if (regular) return '<span class="v-warn">' + txt + "</span>";
+  return txt;
+}
+
 function filas(pares){
   return pares
     .filter(p => p[1] !== null && p[1] !== undefined && p[1] !== "" && p[1] !== "—")
@@ -410,6 +428,12 @@ function detalleHTML(i){
     ["Salud del AG",     i.tabs && i.tabs.ag ? esc(i.tabs.ag) : null]
   ]);
 
+  const tempdb = filas([
+    ["Espacio libre",       val(i.tempdb_libre_mb, "MB", 2048, 512, true)],
+    ["Log libre",           val(i.tempdb_log_libre_mb, "MB", 512, 128, true)],
+    ["Log libre (%)",       val(i.tempdb_log_libre_pct, "%", 20, 5, true)]
+  ]);
+
   const alarmas = CAT_DETALLE
     .filter(c => (i.alarmas || {})[c])
     .map(c => '<span class="tag ' + colorNivelCat(i.alarmas[c]) + '">' +
@@ -420,10 +444,29 @@ function detalleHTML(i){
     ? '<div class="avisos">' + i.avisos.map(esc).join(" · ") + "</div>" : "";
 
   return '<div class="detalle">' +
-           "<table>" + rec + inf + "</table>" +
+           '<div class="subt">Recursos</div><table>' + rec + "</table>" +
+           (tempdb ? '<div class="subt">TempDB</div><table>' + tempdb + "</table>" : "") +
+           '<div class="subt">Instancia</div><table>' + inf + "</table>" +
            '<div class="alarmas">' + alarmas + "</div>" +
            avisos +
          "</div>";
+}
+
+// Bloque de backups. Ojo con la lectura: DPA mide "el tiempo que lleva LA PEOR
+// base de datos de la instancia" sin backup, asi que una sola base en desuso
+// dispara el numero entero. Y las bases en modo SIMPLE no admiten backup de
+// log, con lo que ese contador crece indefinidamente sin que sea un problema.
+function backupsHTML(i){
+  const t = filas([
+    ["Sin backup completo", val(i.sin_full_dias, "días", 2, 7)],
+    ["Sin backup de log",   val(i.sin_log_horas, "h", 24, 168)],
+    ["Logs sin archivar",   val(i.logs_sin_archivar_mb, "MB")],
+    ["Backups en curso",    i.backups_activos != null ? fmt(i.backups_activos, 0) : null],
+    ["Conjunto de backup",  val(i.backup_total_gb, "GB")]
+  ]);
+  if (!t) return "";
+  return '<div class="detalle"><div class="subt">Backups</div>' +
+         "<table>" + t + "</table></div>";
 }
 
 // ------------------------------------------------- bloqueos e indicadores
@@ -549,7 +592,7 @@ function tarjeta(i){
           indicadoresHTML(i) +
         "</div>" +
         '<div class="zona zona-b">' + detalleHTML(i) + "</div>" +
-        '<div class="zona zona-c">' + graficas + "</div>" +
+        '<div class="zona zona-c">' + backupsHTML(i) + graficas + "</div>" +
       "</div>" +
       bloqueosHTML(i) +
     "</div>";
