@@ -451,12 +451,10 @@ function detalleHTML(i){
 
   const inf = filas([
     ["Motor",            esc(i.tipo)],
-    ["Availability Group", i.ag ? esc(i.ag) : null],
     ["Monitor DPA",      esc(i.monitor_estado)],
     ["Sesiones activas (media 1 h)", i.sesiones_activas_media != null ? fmt(i.sesiones_activas_media,1) : null],
     ["Espera media (5 min)", i.wait_medio != null ? fmtDur(i.wait_medio) : null],
-    ["Tuning",           i.tabs && i.tabs.tuning ? esc(i.tabs.tuning) : null],
-    ["Salud del AG",     i.tabs && i.tabs.ag ? esc(i.tabs.ag) : null]
+    ["Tuning",           i.tabs && i.tabs.tuning ? esc(i.tabs.tuning) : null]
   ]);
 
   const tempdb = filas([
@@ -520,6 +518,39 @@ function avisosHTML(i){
   const cls = (i.nivel === "critico" || i.nivel === "caido") ? "alarm" : "warn";
   return '<div class="avisos ' + cls + '">' +
          a.map(t => "<span>" + esc(t) + "</span>").join("") + "</div>";
+}
+
+// Availability Group. Solo se pinta en las instancias que pertenecen a uno.
+function agHTML(i){
+  const g = i.ag_detalle;
+  if (!g) return "";
+
+  const salud = g.salud === "HEALTHY"
+    ? '<span class="v-ok">' + esc(g.salud_texto || "Healthy") + "</span>"
+    : '<span class="v-alarm">' + esc(g.salud_texto || g.salud || "?") + "</span>";
+
+  // Manual significa que si cae la primaria no hay conmutacion automatica:
+  // no es un error, pero conviene que se vea.
+  const conmut = g.conmutacion
+    ? (/manual/i.test(g.conmutacion)
+        ? '<span class="v-warn">' + esc(g.conmutacion) + "</span>"
+        : '<span class="v-ok">' + esc(g.conmutacion) + "</span>")
+    : null;
+
+  const t = filas([
+    ["Salud",             salud],
+    ["Grupo",             g.nombre ? esc(g.nombre) : null],
+    ["Clúster",           g.cluster ? esc(g.cluster) : null],
+    ["Rol de esta",       g.rol ? esc(g.rol) : null],
+    ["Réplica primaria",  g.primaria ? esc(g.primaria) : null],
+    ["Réplicas",          g.replicas != null ? fmt(g.replicas, 0) : null],
+    ["Bases de datos",    g.bases != null ? fmt(g.bases, 0) : null],
+    ["Conmutación",       conmut]
+  ]);
+  if (!t) return "";
+  return '<div class="detalle"><div class="subt">Availability Group ' +
+         '<span class="pista">' + esc(g.listener || "") + "</span></div>" +
+         "<table>" + t + "</table></div>";
 }
 
 // Bloque de backups. Ojo con la lectura: DPA mide "el tiempo que lleva LA PEOR
@@ -713,7 +744,7 @@ function tarjeta(i){
           avisosHTML(i) +
           medidoresHTML(i) +
         "</div>" +
-        '<div class="zona zona-b">' + detalleHTML(i) + "</div>" +
+        '<div class="zona zona-b">' + detalleHTML(i) + agHTML(i) + "</div>" +
         '<div class="zona zona-c">' + backupsHTML(i) + graficas +
           discoHTML(i) + "</div>" +
       "</div>" +

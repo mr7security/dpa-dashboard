@@ -311,6 +311,14 @@ class ClienteDPA(object):
             "baseline": "false",
         })
 
+    def ag_estado(self, db_id):
+        """Resumen del Availability Group. Solo tiene sentido si la instancia
+        pertenece a uno; si no, DPA devuelve los campos a null."""
+        return self.rest("ag-status/summary", {
+            "db_id": str(db_id),
+            "refresh": "false",
+        })
+
     # -- paginas HTML (solo para la tabla de bloqueos) ------------------------
 
     def pagina(self, ruta, params=None, reintento=True):
@@ -559,6 +567,26 @@ def resumen(puntos):
     }
 
 
+def parsear_ag(datos):
+    """Normaliza el resumen del Availability Group."""
+    if not isinstance(datos, dict) or not datos.get("listenerName"):
+        return None
+    det = (datos.get("agSummaryDetails") or [{}])[0]
+    return {
+        "listener": datos.get("listenerName"),
+        "cluster": datos.get("clusterName"),
+        "nombre": datos.get("agNameOnListener") or det.get("agName"),
+        "salud": datos.get("agHealthStatus"),
+        "salud_texto": det.get("agStatusDescription"),
+        "rol": det.get("agRoleDesc"),
+        "primaria": det.get("primaryReplica"),
+        "instancia": det.get("instanceName"),
+        "replicas": det.get("replicaCount"),
+        "bases": det.get("databaseCount"),
+        "conmutacion": det.get("failoverModeDesc"),
+    }
+
+
 def evaluar_estado(inst):
     """
     Semaforo consolidado. Nos apoyamos en los alarmLevel que DPA ya calcula,
@@ -645,6 +673,7 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "sesiones_bloqueadas_max": m["sesiones_bloqueadas"]["max"],
         "bloqueos": [],
         "bloqueos_error": None,
+        "ag_detalle": None,
 
         # espera (lo grande, segundo bloque)
         "wait_total_hora": m["wait_time"]["suma"],
@@ -729,6 +758,14 @@ class Monitor(object):
             cats = self.cliente.categorias(db_id, inicio, fin)
             datos = self.cliente.datos(db_id, list(METRICAS.keys()), inicio, fin)
             inst = parsear_instancia(meta, tabs, cats, datos)
+
+            # Solo las instancias que pertenecen a un AG
+            if meta.get("agName") or inst.get("es_ag"):
+                try:
+                    inst["ag_detalle"] = parsear_ag(self.cliente.ag_estado(db_id))
+                except Exception as e:  # noqa: BLE001
+                    log.warning("%s: no pude leer el estado del AG: %s",
+                                meta.get("name"), e)
 
             # La lista de bloqueos solo se pide si DPA dice que hay alguno, y
             # va en su propio try: es HTML parseado, la parte fragil. Si falla,

@@ -37,6 +37,7 @@ vuelve a loguearse y reintenta la petición una sola vez.
 | `GET /iwc/rest/databases/{id}/super-tab` | nivel de Trends, Tuning, salud del AG y Recursos |
 | `GET /iwc/rest/databases/{id}/metrics/categories` | `alarmLevel` por categoría (el semáforo de DPA) |
 | `GET /iwc/rest/databases/{id}/metrics/data` | series `{time, value}` de las métricas |
+| `GET /iwc/rest/ag-status/summary` | Availability Group: clúster, salud, réplica primaria, rol, nº de réplicas y bases, modo de conmutación |
 
 ### La excepción: la lista de sesiones bloqueadas
 
