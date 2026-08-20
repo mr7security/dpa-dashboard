@@ -76,6 +76,36 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .picos{font-size:.7rem;color:var(--muted);margin-top:2px}
 .picos em{font-style:normal;opacity:.7}
 
+/* lista de sesiones bloqueadas */
+.blk{margin-top:10px;border:1px solid var(--alarm);border-radius:9px;
+   padding:8px 10px;background:#2a1520}
+.blk h3{margin:0 0 6px;font-size:.68rem;text-transform:uppercase;
+   letter-spacing:.07em;color:var(--alarm);font-weight:800}
+.blk .row{display:flex;gap:9px;align-items:baseline;font-size:.76rem;
+   padding:3px 0;border-bottom:1px solid #3f2130}
+.blk .row:last-child{border-bottom:none}
+.blk .spid{font-weight:800;font-variant-numeric:tabular-nums;min-width:3.2em}
+.blk .rol{font-size:.6rem;font-weight:800;text-transform:uppercase;
+   padding:1px 6px;border-radius:5px;letter-spacing:.05em}
+.blk .rol.b{background:#7f1d1d;color:#fecaca}
+.blk .rol.w{background:#78350f;color:#fde68a}
+.blk .prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+   white-space:nowrap;color:var(--text)}
+.blk .esp{color:var(--warn);font-weight:700;white-space:nowrap}
+
+/* indicadores por categoria, siempre visibles */
+.ind{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.ichip{display:flex;align-items:center;gap:6px;font-size:.66rem;
+   text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+   background:var(--card2);border:1px solid #2b3d57;border-radius:7px;
+   padding:3px 9px}
+.ichip i{width:8px;height:8px;border-radius:50%;background:var(--off);display:block;
+   flex:none}
+.ichip.ok i{background:var(--ok)}
+.ichip.warn i{background:var(--warn)}
+.ichip.alarm i{background:var(--alarm)}
+.ichip.unk{opacity:.45}
+
 .detalle{margin-top:12px;border-top:1px solid #24334a;padding-top:8px}
 .detalle table{width:100%;border-collapse:collapse;font-size:.76rem}
 .detalle td{padding:3px 0;border-bottom:1px solid #24334a}
@@ -96,8 +126,10 @@ canvas.chart{width:100%;height:52px;display:block}
 
 /* ---------------- Modo TV ---------------- */
 body.tv{padding:10px 12px;overflow:hidden}
+/* En TV la tarjeta se queda en lo esencial: sesiones, bloqueos e indicadores */
 body.tv #banner,body.tv .card-h .tech,body.tv .upd,
-body.tv .detalle,body.tv .chartblock[data-type="qual"]{display:none}
+body.tv .detalle,body.tv .charts,
+body.tv .sensor[data-type="qual"]{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
 body.tv .site .cards{grid-auto-flow:column;grid-auto-columns:1fr;
    grid-template-columns:none}
@@ -110,8 +142,16 @@ body.tv .value small{font-size:.4em}
 body.tv .dual .v2{font-size:clamp(1.8rem,3.4vw,6rem)}
 body.tv .picos{font-size:clamp(.6rem,.9vw,1.15rem)}
 body.tv .sensor{align-items:center;text-align:center}
-body.tv canvas.chart{height:clamp(16px,3vh,42px)}
 body.tv .pill{font-size:clamp(.6rem,.85vw,1.1rem)}
+body.tv .ind{gap:clamp(6px,.8vw,16px);justify-content:center;
+   margin-top:clamp(8px,1.5vh,22px)}
+body.tv .ichip{font-size:clamp(.6rem,.95vw,1.35rem);padding:4px 12px;
+   gap:clamp(5px,.6vw,10px)}
+body.tv .ichip i{width:clamp(8px,.85vw,16px);height:clamp(8px,.85vw,16px)}
+body.tv .blk{padding:clamp(6px,1vh,14px) clamp(8px,1vw,16px)}
+body.tv .blk h3{font-size:clamp(.6rem,.9vw,1.25rem)}
+body.tv .blk .row{font-size:clamp(.7rem,1.1vw,1.6rem);gap:clamp(6px,.8vw,14px)}
+body.tv .blk .rol{font-size:clamp(.55rem,.8vw,1.15rem)}
 
 #offline-overlay{display:none;position:fixed;inset:0;z-index:9999;
    background:rgba(8,12,24,.96);flex-direction:column;align-items:center;
@@ -172,7 +212,10 @@ const CAT_ES = {
   "Waits":"Esperas", "TempDB":"TempDB", "Backups":"Backups",
   "Network":"Red", "License Compliance":"Licencias"
 };
-const CAT_ORDEN = ["CPU","Memory","Disk","Sessions","Waits","TempDB","Backups","Network","License Compliance"];
+// Los 5 que van siempre visibles, tambien en la tele
+const CAT_INDICADORES = ["CPU","Memory","Disk","Sessions","Network"];
+// El resto, solo en el detalle de la vista normal
+const CAT_DETALLE = ["Waits","TempDB","Backups","License Compliance"];
 
 let rangeH = 24;
 let alertsOn = false;
@@ -208,6 +251,8 @@ function colorBloqueadas(v){
   if (v >= 1) return "v-alarm";
   return "v-ok";
 }
+
+const NIVEL_CAT_ES = {CRITICAL:"crítico", WARNING:"aviso", NORMAL:"correcto"};
 
 function colorNivelCat(lvl){
   if (lvl === "CRITICAL") return "alarm";
@@ -261,7 +306,7 @@ function detalleHTML(i){
     ["Salud del AG",     i.tabs && i.tabs.ag ? esc(i.tabs.ag) : null]
   ]);
 
-  const alarmas = CAT_ORDEN
+  const alarmas = CAT_DETALLE
     .filter(c => (i.alarmas || {})[c])
     .map(c => '<span class="tag ' + colorNivelCat(i.alarmas[c]) + '">' +
               esc(CAT_ES[c] || c) + "</span>")
@@ -275,6 +320,33 @@ function detalleHTML(i){
            '<div class="alarmas">' + alarmas + "</div>" +
            avisos +
          "</div>";
+}
+
+// ------------------------------------------------- bloqueos e indicadores
+
+function bloqueosHTML(i){
+  const b = i.bloqueos || [];
+  if (!b.length) return "";
+  const filas = b.map(s => {
+    const rol = s.rol === "bloquea"
+      ? '<span class="rol b">bloquea</span>'
+      : (s.rol === "espera" ? '<span class="rol w">espera</span>' : "");
+    return '<div class="row">' +
+             '<span class="spid">' + esc(s.spid) + "</span>" + rol +
+             '<span class="prog">' + esc(s.programa || s.login || "—") + "</span>" +
+             '<span class="esp">' + esc(s.espera || "") + "</span>" +
+           "</div>";
+  }).join("");
+  return '<div class="blk"><h3>&#9940; Sesiones bloqueadas</h3>' + filas + "</div>";
+}
+
+function indicadoresHTML(i){
+  return '<div class="ind">' + CAT_INDICADORES.map(c => {
+    const lvl = (i.alarmas || {})[c];
+    return '<span class="ichip ' + colorNivelCat(lvl) + '" title="' +
+           esc(NIVEL_CAT_ES[lvl] || "sin dato") + '"><i></i>' +
+           esc(CAT_ES[c] || c) + "</span>";
+  }).join("") + "</div>";
 }
 
 // -------------------------------------------------------------------- render
@@ -319,6 +391,8 @@ function tarjeta(i){
         '<span class="status ' + info.cls + '">' + info.txt + "</span>" +
       "</div>" +
       '<div class="svals">' + bloqueSesiones + bloqueEspera + "</div>" +
+      bloqueosHTML(i) +
+      indicadoresHTML(i) +
       detalleHTML(i) +
       graficas +
     "</div>";

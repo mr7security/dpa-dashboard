@@ -38,6 +38,27 @@ vuelve a loguearse y reintenta la petición una sola vez.
 | `GET /iwc/rest/databases/{id}/metrics/categories` | `alarmLevel` por categoría (el semáforo de DPA) |
 | `GET /iwc/rest/databases/{id}/metrics/data` | series `{time, value}` de las métricas |
 
+### La excepción: la lista de sesiones bloqueadas
+
+El detalle de los bloqueos **no existe en ninguna API JSON**. La pantalla
+*Current* lo saca de una página HTML normal:
+
+```
+GET /iwc/realTimeTab.iwc?db_id=<id>&action=4&cs=1
+```
+
+Devuelve la tabla de la pestaña *Blocking* con las columnas crudas de
+`sysprocesses`: `spid` (marcado con `(blocker)` o `(waiter)`), `loginame`,
+`program_name`, `hostname`, `db_name`, `lastwaittype`, `cmd`, `waittime` (ms),
+`status`. El colector la parsea con `html.parser`.
+
+Esta es **la parte frágil del proyecto**: si SolarWinds cambia esa página en
+una actualización, deja de parsear. Por eso:
+
+- Solo se pide cuando DPA ya ha dicho que hay sesiones bloqueadas.
+- Va en su propio `try`: si falla, se registra en el log, la tarjeta sigue
+  viva y simplemente no aparece la lista.
+
 Categorías con `alarmLevel`: CPU, Memory, Disk, Sessions, Waits, TempDB,
 Backups, Network, License Compliance. Valores: `NORMAL`, `WARNING`,
 `CRITICAL`, `UNKNOWN`.

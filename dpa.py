@@ -28,6 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ METRICAS = {
 }
 
 # Categorias de alarma que devuelve DPA. El orden de pintado vive en
-# dpa.html (CAT_ORDEN); aqui solo traducimos para los mensajes de aviso.
+# dpa.html (CAT_INDICADORES y CAT_DETALLE); aqui solo traducimos los avisos.
 CATEGORIA_ES = {
     "CPU": "CPU",
     "Memory": "Memoria",
@@ -82,6 +83,9 @@ ORDEN_NIVEL = {"ok": 0, "aviso": 1, "critico": 2}
 # se queda en ambar por muy critico que lo pinte DPA: son cosas que mirar
 # cuando se pueda, no motivo para saltar de la silla.
 CATEGORIAS_ROJAS = ("CPU", "Memory", "Network")
+
+# Cuantas sesiones bloqueadas listamos como maximo en una tarjeta.
+MAX_BLOQUEOS = 8
 
 log = logging.getLogger("dpa")
 
@@ -287,6 +291,50 @@ class ClienteDPA(object):
             "baseline": "false",
         })
 
+    # -- paginas HTML (solo para la tabla de bloqueos) ------------------------
+
+    def pagina(self, ruta, params=None, reintento=True):
+        """
+        GET a una pagina .iwc de la web de DPA y devuelve su HTML.
+
+        Se usa SOLO para la tabla de bloqueos, que no existe en ninguna API
+        JSON. Es la parte fragil del colector: si SolarWinds cambia esa
+        pagina en una actualizacion, esto deja de parsear. Por eso quien
+        llama debe tratarlo como opcional y no dejar que tumbe la tarjeta.
+        """
+        with self._lock:
+            if self._opener is None:
+                self.login()
+            op = self._opener
+
+        url = self.base + "/iwc/" + ruta.lstrip("/")
+        if params:
+            url += "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+
+        try:
+            resp, cuerpo = self._abrir(url, opener=op)
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403) and reintento:
+                self._relogin(op)
+                return self.pagina(ruta, params, reintento=False)
+            raise ErrorDPA("HTTP %s en %s" % (e.code, ruta))
+
+        if "login.iwc" in resp.geturl() or "name=\"password\"" in cuerpo:
+            if reintento:
+                self._relogin(op)
+                return self.pagina(ruta, params, reintento=False)
+            raise ErrorDPA("sesion perdida al pedir %s" % ruta)
+
+        return cuerpo
+
+    def bloqueos(self, db_id):
+        """HTML de la pestana 'Blocking' de la pantalla Current."""
+        return self.pagina("realTimeTab.iwc", {
+            "db_id": str(db_id),
+            "action": "4",
+            "cs": "1",
+        })
+
 
 # ---------------------------------------------------------------------------
 # Parseo y normalizacion
@@ -320,6 +368,152 @@ def series_a_puntos(bloques):
         puntos.sort(key=lambda x: x[0])
         fuera[nombre] = puntos
     return fuera
+
+
+class _ExtractorTablas(HTMLParser):
+    """Saca todas las tablas de un HTML como listas de filas de texto."""
+
+    def __init__(self):
+        HTMLParser.__init__(self, convert_charrefs=True)
+        self.tablas = []
+        # una entrada por tabla abierta: soporta tablas anidadas dentro de
+        # una celda (el menu "Action" de DPA) sin destrozar la fila de fuera
+        self._pila = []
+        self._mudo = False
+
+    def _actual(self):
+        return self._pila[-1] if self._pila else None
+
+    # -- cierres tolerantes con HTML mal formado ----------------------------
+
+    def _cerrar_celda(self, t):
+        if t["celda"] is not None:
+            if t["fila"] is None:  # <td> suelto, o </tr> antes que </td>
+                t["fila"] = []
+            t["fila"].append(" ".join("".join(t["celda"]).split()))
+            t["celda"] = None
+
+    def _cerrar_fila(self, t):
+        self._cerrar_celda(t)
+        if t["fila"] is not None:
+            t["filas"].append(t["fila"])
+            t["fila"] = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self._mudo = True
+            return
+        if tag == "table":
+            self._pila.append({"filas": [], "fila": None, "celda": None})
+            return
+        t = self._actual()
+        if t is None:
+            return
+        if tag == "tr":
+            self._cerrar_fila(t)   # por si la anterior venia sin </tr>
+            t["fila"] = []
+        elif tag in ("td", "th"):
+            self._cerrar_celda(t)  # por si la anterior venia sin </td>
+            if t["fila"] is None:
+                t["fila"] = []
+            t["celda"] = []
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style"):
+            self._mudo = False
+            return
+        t = self._actual()
+        if t is None:
+            return
+        if tag in ("td", "th"):
+            self._cerrar_celda(t)
+        elif tag == "tr":
+            self._cerrar_fila(t)
+        elif tag == "table":
+            self._cerrar_fila(t)
+            self.tablas.append(self._pila.pop()["filas"])
+
+    def close(self):
+        HTMLParser.close(self)
+        while self._pila:  # tablas que se quedaron sin </table>
+            t = self._pila.pop()
+            self._cerrar_fila(t)
+            self.tablas.append(t["filas"])
+
+    def handle_data(self, data):
+        if self._mudo:
+            return
+        # el texto cae en todas las celdas abiertas, para que la celda de
+        # fuera conserve tambien lo que haya en la tabla anidada
+        for t in self._pila:
+            if t["celda"] is not None:
+                t["celda"].append(data)
+
+
+def parsear_bloqueos(html_txt, maximo=MAX_BLOQUEOS):
+    """
+    Convierte el HTML de la pestana Blocking en una lista de sesiones.
+
+    La tabla trae las columnas crudas de sysprocesses (spid, loginame,
+    program_name, lastwaittype, waittime...) y marca cada fila con
+    '(blocker)' o '(waiter)' dentro de la celda del spid.
+    """
+    ex = _ExtractorTablas()
+    try:
+        ex.feed(html_txt)
+        ex.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+    for tabla in ex.tablas:
+        if len(tabla) < 2:
+            continue
+        cabecera = [c.strip().lower() for c in tabla[0]]
+        if "spid" not in cabecera:
+            continue
+        idx = {n: i for i, n in enumerate(cabecera)}
+
+        filas = []
+        for celdas in tabla[1:]:
+            def col(nombre):
+                i = idx.get(nombre)
+                if i is None or i >= len(celdas):
+                    return ""
+                return celdas[i].strip()
+
+            crudo = col("spid")
+            if not crudo:
+                continue
+
+            bajo = crudo.lower()
+            if "block" in bajo:
+                rol = "bloquea"
+            elif "wait" in bajo:
+                rol = "espera"
+            else:
+                rol = ""
+
+            solo_digitos = re.sub(r"\D", "", crudo.split("(")[0])
+            espera_ms = num(col("waittime"))
+
+            filas.append({
+                "spid": solo_digitos or crudo,
+                "rol": rol,
+                "programa": col("program_name") or col("loginame") or col("hostname"),
+                "login": col("loginame"),
+                "host": col("hostname"),
+                "bd": col("db_name"),
+                "espera": col("lastwaittype"),
+                "comando": col("cmd"),
+                "estado": col("status"),
+                "espera_s": (espera_ms / 1000.0) if espera_ms is not None else None,
+            })
+
+        # el que bloquea primero, que es el que hay que mirar
+        filas.sort(key=lambda f: 0 if f["rol"] == "bloquea" else 1)
+        return filas[:maximo]
+
+    return []
 
 
 def resumen(puntos):
@@ -420,6 +614,7 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "sesiones_activas_max": m["sesiones_activas"]["max"],
         "sesiones_bloqueadas": m["sesiones_bloqueadas"]["ultimo"],
         "sesiones_bloqueadas_max": m["sesiones_bloqueadas"]["max"],
+        "bloqueos": [],
 
         # espera (lo grande, segundo bloque)
         "wait_total_hora": m["wait_time"]["suma"],
@@ -485,7 +680,21 @@ class Monitor(object):
             tabs = self.cliente.super_tab(db_id)
             cats = self.cliente.categorias(db_id, inicio, fin)
             datos = self.cliente.datos(db_id, list(METRICAS.keys()), inicio, fin)
-            destino[db_id] = parsear_instancia(meta, tabs, cats, datos)
+            inst = parsear_instancia(meta, tabs, cats, datos)
+
+            # La lista de bloqueos solo se pide si DPA dice que hay alguno, y
+            # va en su propio try: es HTML parseado, la parte fragil. Si falla,
+            # la tarjeta sigue viva y solo se queda sin la lista.
+            if inst.get("sesiones_bloqueadas"):
+                try:
+                    inst["bloqueos"] = parsear_bloqueos(
+                        self.cliente.bloqueos(db_id))
+                except Exception as e:  # noqa: BLE001
+                    log.warning("%s: no pude leer los bloqueos: %s",
+                                meta.get("name"), e)
+                    inst["bloqueos"] = []
+
+            destino[db_id] = inst
         except Exception as e:  # noqa: BLE001
             log.warning("%s: %s", meta.get("name"), e)
             destino[db_id] = {
