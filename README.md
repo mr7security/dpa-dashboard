@@ -97,7 +97,16 @@ memoria, page life expectancy, buffer cache hit, latencias de disco, batch
 requests, transacciones, round-trip, las etiquetas de las 9 categorías de
 alarma y la lista de avisos.
 
-En Modo TV se ocultan el detalle y la segunda gráfica, para que nada se pise.
+### Las tres vistas
+
+| Vista | Para qué | Qué muestra |
+|---|---|---|
+| **Normal** | mirar desde el PC | un servidor por fila, a todo el ancho, con las tres zonas: métricas y medidores, detalle y AG, gráficas y disco. Debajo, bloqueos y sesiones activas |
+| **Modo TV** | pantalla de sala | las cinco instancias a la vez, solo sesiones e indicadores, y un panel de bloqueos abajo que ocupa el hueco restante |
+| **Presentación** | rotación desatendida | una instancia cada vez a pantalla completa con todo el detalle, cambiando cada 15 s (30 s si está en crítico) |
+
+En Presentación: flechas para moverse, espacio para pausar, Escape para salir,
+y clic en cualquier nombre de la tira superior para saltar a esa instancia.
 
 ### Semáforo
 

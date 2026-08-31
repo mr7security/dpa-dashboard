@@ -290,6 +290,68 @@ body.tv .blk{padding:clamp(4px,.7vh,9px) clamp(6px,.7vw,11px);
    margin-top:clamp(6px,1vh,14px);max-height:30vh;overflow:hidden}
 body.tv .blk h3{font-size:clamp(.5rem,.58vw,.85rem);margin-bottom:3px}
 
+/* ---------------- Modo Presentacion ---------------- */
+/* Una instancia cada vez, a pantalla completa y con todo el detalle. */
+#pres-nav{display:none}
+body.pres{padding:10px 14px;overflow:hidden;height:100vh;
+   display:flex;flex-direction:column}
+body.pres header{flex:none}
+body.pres #banner,body.pres #bloqueos-tv,body.pres .act,
+body.pres .site-h{display:none}
+
+body.pres #pres-nav{display:flex;align-items:center;gap:14px;flex:none;
+   margin-bottom:8px}
+#pres-nav .puntos{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+#pres-nav .p{display:flex;align-items:center;gap:6px;cursor:pointer;
+   font-size:clamp(.6rem,.85vw,1.05rem);text-transform:uppercase;
+   letter-spacing:.06em;color:var(--muted);border:1px solid #2b3d57;
+   background:var(--card);border-radius:999px;padding:3px 12px;opacity:.55}
+#pres-nav .p i{width:8px;height:8px;border-radius:50%;background:var(--cc);
+   display:block;flex:none}
+#pres-nav .p.on{opacity:1;color:var(--text);border-color:var(--cc)}
+#pres-nav .p.mal{border-color:var(--alarm)}
+#pres-nav .cuenta{font-variant-numeric:tabular-nums;color:var(--muted);
+   font-size:clamp(.6rem,.85vw,1.05rem);white-space:nowrap}
+#pres-nav .barra{width:clamp(60px,10vw,160px);height:5px;border-radius:999px;
+   background:#24334a;overflow:hidden;flex:none}
+#pres-nav .barra i{display:block;height:100%;background:var(--accent);
+   transition:width .95s linear}
+
+body.pres #sites{flex:1;min-height:0}
+body.pres section.site{height:100%;display:flex;flex-direction:column;
+   padding:10px 14px}
+body.pres .cards{display:block;height:100%;gap:0}
+body.pres .card{display:none}
+body.pres .card.pres-on{display:flex;flex-direction:column;height:100%;
+   overflow:hidden}
+body.pres .cbody{flex:1;min-height:0;align-items:stretch}
+body.pres .zona{overflow:auto;overscroll-behavior:contain}
+/* la lista de bloqueos se queda dentro de la tarjeta: hay que acotarla o
+   recortaria por abajo justo lo que hay que leer */
+body.pres .card > .blk{flex:none;max-height:30vh;overflow:auto}
+@media (max-width:1100px){
+  body.pres .cbody{grid-template-columns:1fr 1fr}
+  body.pres .zona-c{display:none}
+}
+
+/* todo mas grande: hay pantalla entera para una sola instancia */
+body.pres .card-h h2{font-size:clamp(1.5rem,2.8vw,3.6rem)}
+body.pres .card-h .tech,body.pres .status{font-size:clamp(.75rem,1.05vw,1.5rem)}
+body.pres .label{font-size:clamp(.68rem,.95vw,1.3rem)}
+body.pres .value{font-size:clamp(2.4rem,4.6vw,7rem);line-height:1.05}
+body.pres .value small{font-size:.38em}
+body.pres .pie{font-size:clamp(.62rem,.85vw,1.15rem)}
+body.pres .ichip{font-size:clamp(.62rem,.85vw,1.15rem);padding:3px 10px}
+body.pres .avisos{font-size:clamp(.65rem,.9vw,1.2rem)}
+body.pres .g{font-size:clamp(.68rem,.95vw,1.3rem)}
+body.pres .detalle table{font-size:clamp(.7rem,.95vw,1.3rem)}
+body.pres .subt{font-size:clamp(.62rem,.85vw,1.15rem)}
+body.pres canvas.chart{height:clamp(52px,9vh,130px)}
+body.pres .clab{font-size:clamp(.6rem,.8vw,1.05rem)}
+body.pres .blk h3{font-size:clamp(.68rem,.95vw,1.3rem)}
+body.pres .btab{font-size:clamp(.68rem,.9vw,1.25rem)}
+body.pres .btab th{font-size:clamp(.58rem,.75vw,1rem)}
+
 #offline-overlay{display:none;position:fixed;inset:0;z-index:9999;
    background:rgba(8,12,24,.96);flex-direction:column;align-items:center;
    justify-content:center;gap:14px;text-align:center;animation:ovpulse 1.5s infinite}
@@ -299,7 +361,8 @@ body.tv .blk h3{font-size:clamp(.5rem,.58vw,.85rem);margin-bottom:3px}
    letter-spacing:.04em}
 #offline-overlay .s{font-size:clamp(1rem,2.4vw,2.4rem);color:var(--muted)}
 #offline-overlay .cron{font-size:clamp(1.4rem,4vw,4rem);font-variant-numeric:tabular-nums}
-body.tv.sincon #offline-overlay{display:flex}
+body.tv.sincon #offline-overlay,
+body.pres.sincon #offline-overlay{display:flex}
 </style>
 </head>
 <body>
@@ -315,11 +378,13 @@ body.tv.sincon #offline-overlay{display:flex}
     <button data-h="24" class="on">24h</button>
     <button id="btn-alertas">&#128276; Alertas: OFF</button>
     <button id="btn-tv">&#128250; Modo TV</button>
+    <button id="btn-pres">&#127916; Presentación</button>
   </div>
   <div id="clock"></div>
 </header>
 
 <div id="banner"></div>
+<div id="pres-nav"></div>
 <div id="sites"></div>
 <div id="bloqueos-tv"></div>
 
@@ -874,6 +939,9 @@ function render(estado){
     "</section>";
 
   pintarBloqueosTV(insts);
+  // primero se decide que tarjeta se ve y luego se pintan las graficas: al
+  // reves saldrian dibujadas con ancho cero
+  if (presOn) presAplicar();
   pintarTodas();
   if (document.body.classList.contains("tv")) fitTV();
   avisarSiEmpeora(insts);
@@ -981,6 +1049,110 @@ function tickHist(estado){
   Promise.all(peticiones).then(() => { histSeries = nuevo; pintarTodas(); });
 }
 
+// --------------------------------------------------- modo presentacion
+
+const PRES_SEG = 15;          // segundos por instancia
+let presOn = false;
+let presIdx = 0;
+let presResta = PRES_SEG;
+let presPausa = false;
+
+function presInstancias(){
+  return (window.__ultimoEstado && window.__ultimoEstado.instancias) || [];
+}
+
+// Las instancias con problemas se quedan el doble de tiempo
+function presDuracion(inst){
+  const mal = inst && (inst.nivel === "critico" || inst.nivel === "caido");
+  return mal ? PRES_SEG * 2 : PRES_SEG;
+}
+
+function presIr(idx){
+  const n = presInstancias().length;
+  if (!n) return;
+  presIdx = ((idx % n) + n) % n;
+  presResta = presDuracion(presInstancias()[presIdx]);
+  presAplicar();
+  // las graficas se dibujaron con la tarjeta oculta (ancho 0): hay que
+  // repintarlas ahora que tiene tamano real
+  pintarTodas();
+}
+
+function presAplicar(){
+  if (!presOn) return;
+  const insts = presInstancias();
+  const tarjetas = [...document.querySelectorAll("#sites .card")];
+  if (!tarjetas.length) return;
+
+  const n = Math.min(tarjetas.length, insts.length || tarjetas.length);
+  if (presIdx >= n){ presIdx = 0; presResta = presDuracion(insts[0]); }
+
+  tarjetas.forEach((c, k) => c.classList.toggle("pres-on", k === presIdx));
+
+  const total = presDuracion(insts[presIdx]);
+  const pct = Math.max(0, Math.min(100, (presResta / total) * 100));
+  const rota = insts.length > 1;
+
+  const puntos = insts.map((i, k) => {
+    const mal = (i.nivel === "critico" || i.nivel === "caido") ? " mal" : "";
+    return '<span class="p' + (k === presIdx ? " on" : "") + mal +
+           '" data-idx="' + k + '" style="--cc:' + colorServidor(i.nombre) + '">' +
+           "<i></i>" + esc(tituloTV(i.nombre)) + "</span>";
+  }).join("");
+
+  // Solo rehacemos el HTML cuando cambia algo estructural. Si lo reescribimos
+  // cada segundo se pierden clics del usuario y la barra no puede animarse.
+  const nav = document.getElementById("pres-nav");
+  const firma = insts.map(i => i.nombre + "|" + i.nivel).join(",") + "#" + presIdx;
+  if (nav.dataset.firma !== firma){
+    nav.dataset.firma = firma;
+    nav.innerHTML = '<div class="puntos">' + puntos + "</div>" +
+      '<span class="cuenta"></span><span class="barra"><i></i></span>';
+  }
+  nav.querySelector(".cuenta").textContent =
+    !rota ? "" : (presPausa ? "en pausa" : presResta + " s");
+  nav.querySelector(".barra").style.display = rota ? "" : "none";
+  nav.querySelector(".barra i").style.width = pct + "%";
+}
+
+function presTick(){
+  if (!presOn || presPausa) return;
+  const insts = presInstancias();
+  if (insts.length < 2){ presAplicar(); return; }
+  presResta--;
+  if (presResta <= 0) presIr(presIdx + 1);
+  else presAplicar();
+}
+
+// `mantenerFs` = no tocar la pantalla completa. Se usa al saltar de un modo a
+// otro: si salimos y volvemos a entrar en fullscreen en el mismo gesto, se ve
+// un parpadeo y el navegador puede rechazar la segunda peticion.
+function togglePres(mantenerFs){
+  if (document.body.classList.contains("tv")) toggleTV(true);
+  presOn = !document.body.classList.contains("pres");
+  document.body.classList.toggle("pres", presOn);
+  document.getElementById("btn-pres").classList.toggle("on", presOn);
+
+  if (presOn){
+    presPausa = false;
+    if (!mantenerFs && document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    presIr(presIdx);
+    presAplicar();
+  } else {
+    if (!mantenerFs && document.exitFullscreen && document.fullscreenElement){
+      document.exitFullscreen();
+    }
+    const nav = document.getElementById("pres-nav");
+    nav.innerHTML = "";
+    nav.dataset.firma = "";
+    document.querySelectorAll(".card.pres-on")
+      .forEach(c => c.classList.remove("pres-on"));
+  }
+  pintarTodas();
+}
+
 // ---------------------------------------------------------------- modo TV
 
 function fitTV(){
@@ -1011,17 +1183,19 @@ function fitTV(){
   });
 }
 
-function toggleTV(){
+function toggleTV(mantenerFs){
   document.body.classList.toggle("tv");
   const on = document.body.classList.contains("tv");
   document.getElementById("btn-tv").classList.toggle("on", on);
   if (on){
-    if (document.documentElement.requestFullscreen) {
+    if (!mantenerFs && document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
     fitTV();
   } else {
-    if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen();
+    if (!mantenerFs && document.exitFullscreen && document.fullscreenElement){
+      document.exitFullscreen();
+    }
     document.getElementById("sites").style.height = "";
   }
   pintarTodas();
@@ -1051,9 +1225,10 @@ function tick(){
     .then(j => {
       clearTimeout(to);
       limpiarDesconexion();
-      render(j);
+      // el estado se guarda ANTES de pintar: presAplicar() lo consulta
       const primera = !window.__ultimoEstado;
       window.__ultimoEstado = j;
+      render(j);
       if (primera) tickHist(j);
     })
     .catch(() => {
@@ -1101,7 +1276,34 @@ btnAl.addEventListener("click", () => {
 });
 pintarBotonAlertas();
 
-document.getElementById("btn-tv").addEventListener("click", toggleTV);
+document.getElementById("btn-tv").addEventListener("click", () => {
+  if (presOn) togglePres(true);   // no pueden convivir
+  toggleTV();
+});
+document.getElementById("btn-pres").addEventListener("click", togglePres);
+
+// clic en un nombre de la tira: salta a esa instancia
+document.getElementById("pres-nav").addEventListener("click", e => {
+  const p = e.target.closest(".p");
+  if (p) presIr(Number(p.dataset.idx));
+});
+
+// atajos: flechas para moverse, espacio para pausar, Esc para salir
+document.addEventListener("keydown", e => {
+  if (!presOn) return;
+  if (e.key === "ArrowRight"){ e.preventDefault(); presIr(presIdx + 1); }
+  else if (e.key === "ArrowLeft"){ e.preventDefault(); presIr(presIdx - 1); }
+  else if (e.key === " "){ e.preventDefault(); presPausa = !presPausa; presAplicar(); }
+  else if (e.key === "Escape"){ togglePres(); }
+});
+
+// El navegador se come el Escape para salir de pantalla completa y no llega a
+// la pagina: si no escuchamos esto, harian falta dos pulsaciones para salir.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && presOn) togglePres(true);
+});
+
+setInterval(presTick, 1000);
 document.getElementById("logo").addEventListener("error", function(){ this.style.display = "none"; });
 window.addEventListener("resize", () => {
   if (document.body.classList.contains("tv")) fitTV();
