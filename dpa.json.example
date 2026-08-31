@@ -7,6 +7,9 @@
   "_comentario_ssl": "false = no verifica el certificado (DPA suele traerlo autofirmado). El trafico va cifrado igualmente.",
   "verificar_ssl": false,
 
+  "_comentario_servidor": "Nombre a mostrar en la cabecera del modo presentacion. Si se deja vacio se usa el hostname de la maquina.",
+  "nombre_servidor": "",
+
   "puerto": 9000,
   "intervalo_segundos": 30,
   "ventana_minutos": 60,

@@ -304,8 +304,12 @@ body.pres #banner{display:none}
 body.pres header .btns{display:none}
 body.pres header:hover .btns{display:flex}
 
-/* A la derecha: fecha larga en 24 h y debajo lo que se esta viendo */
-body.pres #clock{text-align:right;line-height:1.25}
+/* Marca pegada a la izquierda y reloj a la derecha, pase lo que pase */
+body.pres header{justify-content:space-between;flex-wrap:nowrap}
+body.pres header .brand{margin-right:auto}
+
+/* A la derecha: fecha larga en 24 h y debajo el servidor del dashboard */
+body.pres #clock{text-align:right;line-height:1.25;margin-left:auto}
 body.pres #clock .fecha{font-size:clamp(.72rem,1.05vw,1.55rem);font-weight:700;
    letter-spacing:.07em;color:var(--text);font-variant-numeric:tabular-nums}
 body.pres #clock .srv{font-size:clamp(.68rem,.95vw,1.4rem);color:var(--accent);
@@ -1408,14 +1412,9 @@ function fechaLarga(d){
          p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
 }
 
-// Qué se está viendo ahora mismo en la rotación
-function presNombreActual(){
-  const pasos = presSecuencia();
-  const paso = pasos[presIdx];
-  if (!paso) return "";
-  if (paso.t === "g") return "Vista general";
-  const i = presInstancias()[paso.k];
-  return i ? i.nombre : "";
+// La maquina donde corre el dashboard, no la instancia que se esta viendo
+function servidorDashboard(){
+  return (window.__ultimoEstado && window.__ultimoEstado.servidor) || "";
 }
 
 function reloj(){
@@ -1423,7 +1422,7 @@ function reloj(){
   const c = document.getElementById("clock");
   if (presOn){
     c.innerHTML = '<div class="fecha">' + esc(fechaLarga(ahora)) + "</div>" +
-                  '<div class="srv">' + esc(presNombreActual()) + "</div>";
+                  '<div class="srv">' + esc(servidorDashboard()) + "</div>";
   } else {
     c.textContent = ahora.toLocaleString("es-ES");
   }

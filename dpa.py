@@ -21,6 +21,7 @@ import logging
 import mimetypes
 import os
 import re
+import socket
 import ssl
 import sys
 import threading
@@ -788,7 +789,16 @@ class Monitor(object):
         self.intervalo_sesiones = int(cfg.get("intervalo_sesiones_segundos", 120))
         self._cache_sesiones = {}
         self._cache_ses_lock = threading.Lock()
+        # Nombre de la maquina donde corre el dashboard, para pintarlo en la
+        # cabecera del modo presentacion. Se puede fijar a mano en dpa.json.
+        try:
+            anfitrion = socket.gethostname()
+        except Exception:  # noqa: BLE001
+            anfitrion = ""
+        self.servidor = cfg.get("nombre_servidor") or anfitrion or "dashboard"
+
         self._estado = {"actualizado": None, "intervalo": self.intervalo,
+                        "servidor": self.servidor,
                         "instancias": [], "error": None}
         self._lock = threading.Lock()
         self._hilos = {}
