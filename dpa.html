@@ -17,7 +17,9 @@ body{margin:0;padding:18px 22px;background:var(--bg);color:var(--text);
 
 header{display:flex;align-items:center;justify-content:space-between;gap:16px;
        margin-bottom:14px;flex-wrap:wrap}
-header .brand{display:flex;align-items:center;gap:14px}
+/* margin-right:auto ancla la marca a la izquierda pase lo que pase con el
+   resto de la cabecera (botones ocultos, reloj de dos lineas...) */
+header .brand{display:flex;align-items:center;gap:14px;margin-right:auto}
 #logo{height:42px;display:none;background:#fff;border-radius:8px;padding:3px 8px}
 h1{margin:0;font-size:1.3rem;font-weight:800;text-transform:uppercase;
    letter-spacing:.03em;color:var(--text)}
@@ -301,6 +303,13 @@ body.pres #banner{display:none}
    raton por la cabecera; para salir sin raton, Escape. */
 body.pres header .btns{display:none}
 body.pres header:hover .btns{display:flex}
+
+/* A la derecha: fecha larga en 24 h y debajo lo que se esta viendo */
+body.pres #clock{text-align:right;line-height:1.25}
+body.pres #clock .fecha{font-size:clamp(.72rem,1.05vw,1.55rem);font-weight:700;
+   letter-spacing:.07em;color:var(--text);font-variant-numeric:tabular-nums}
+body.pres #clock .srv{font-size:clamp(.68rem,.95vw,1.4rem);color:var(--accent);
+   text-transform:uppercase;letter-spacing:.09em;font-weight:700}
 /* La clase .g marca la diapositiva "general": en ella se anade tambien la
    clase tv, asi que manda todo el CSS del Modo TV. Por eso lo especifico de
    una sola instancia va con :not(.g). */
@@ -1385,9 +1394,39 @@ function tick(){
     });
 }
 
+const DIAS_ES = ["DOMINGO", "LUNES", "MARTES", "MIÉRCOLES", "JUEVES",
+                 "VIERNES", "SÁBADO"];
+const MESES_ES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                  "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE",
+                  "DICIEMBRE"];
+
+// LUNES, 31 DE AGOSTO DE 2026, 14:38:01
+function fechaLarga(d){
+  const p = n => String(n).padStart(2, "0");
+  return DIAS_ES[d.getDay()] + ", " + d.getDate() + " DE " +
+         MESES_ES[d.getMonth()] + " DE " + d.getFullYear() + ", " +
+         p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+
+// Qué se está viendo ahora mismo en la rotación
+function presNombreActual(){
+  const pasos = presSecuencia();
+  const paso = pasos[presIdx];
+  if (!paso) return "";
+  if (paso.t === "g") return "Vista general";
+  const i = presInstancias()[paso.k];
+  return i ? i.nombre : "";
+}
+
 function reloj(){
-  document.getElementById("clock").textContent =
-    new Date().toLocaleString("es-ES");
+  const ahora = new Date();
+  const c = document.getElementById("clock");
+  if (presOn){
+    c.innerHTML = '<div class="fecha">' + esc(fechaLarga(ahora)) + "</div>" +
+                  '<div class="srv">' + esc(presNombreActual()) + "</div>";
+  } else {
+    c.textContent = ahora.toLocaleString("es-ES");
+  }
   if (disconnectedSince){
     const s = Math.floor((Date.now() - disconnectedSince)/1000);
     const hh = String(Math.floor(s/3600)).padStart(2,"0");
