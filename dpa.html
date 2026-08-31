@@ -304,7 +304,15 @@ body.pres #banner{display:none}
 body.pres header .btns{display:none}
 body.pres header:hover .btns{display:flex}
 
-/* Marca pegada a la izquierda y reloj a la derecha, pase lo que pase */
+/* Marca pegada a la izquierda y reloj a la derecha, pase lo que pase.
+   El width:100% no es redundante: al saltar a la diapositiva general el
+   navegador recalcula la rejilla del mosaico y, durante ese instante, la
+   cabecera se encogia al ancho de su contenido y aparecia centrada. */
+body.pres header,
+body.pres #pres-nav,
+body.pres #sites{width:100%;align-self:stretch}
+body.pres header,
+body.pres #pres-nav{flex:0 0 auto}
 body.pres header{justify-content:space-between;flex-wrap:nowrap}
 body.pres header .brand{margin-right:auto}
 
@@ -349,8 +357,33 @@ body.pres:not(.g) .card.pres-on{display:flex;flex-direction:column;height:100%;
    overflow:hidden}
 /* Tres columnas: resumen estrecho, y las dos tablas repartiendose el resto */
 body.pres:not(.g) .cbody{flex:1;min-height:0;align-items:stretch;
-   grid-template-columns:minmax(220px,.75fr) minmax(0,1.3fr) minmax(0,1.3fr)}
-body.pres:not(.g) .zona{overflow:hidden}
+   grid-template-columns:minmax(240px,.8fr) minmax(0,1.4fr) minmax(0,1.2fr)}
+body.pres:not(.g) .zona{overflow:hidden;display:flex;flex-direction:column}
+
+/* Las tres metricas se apilan, con la etiqueta al lado del numero: en una
+   columna estrecha, tres numeros grandes en fila no caben y se salen. */
+body.pres:not(.g) .zona-a{justify-content:flex-start}
+body.pres:not(.g) .mstrip{grid-template-columns:1fr;gap:0;text-align:left}
+body.pres:not(.g) .m{flex-direction:row;flex-wrap:wrap;align-items:baseline;
+   gap:0 12px}
+body.pres:not(.g) .m .label{order:1;flex:0 0 auto;
+   font-size:clamp(.6rem,.78vw,1.05rem)}
+body.pres:not(.g) .m .value{order:2;flex:0 0 auto;line-height:1;
+   font-size:clamp(1.4rem,2vw,2.9rem)}
+body.pres:not(.g) .m .pie{order:3;flex:1 0 100%;margin-top:0;
+   font-size:clamp(.58rem,.72vw,.95rem)}
+
+/* la columna izquierda va justa de alto: todo un poco mas compacto */
+body.pres:not(.g) .ind{margin-top:8px;gap:5px}
+body.pres:not(.g) .ichip{font-size:clamp(.56rem,.72vw,.95rem);padding:2px 8px}
+body.pres:not(.g) .avisos{margin-top:8px;font-size:clamp(.58rem,.75vw,1rem)}
+body.pres:not(.g) .gauges{margin-top:10px}
+body.pres:not(.g) .g{padding:1px 0;font-size:clamp(.6rem,.78vw,1.05rem)}
+/* signal waits es el medidor menos util de los cinco: cede el sitio */
+body.pres:not(.g) .gauges .g:nth-child(6){display:none}
+
+/* el aviso largo sobra en presentacion: ya esta el de "y N mas" */
+body.pres:not(.g) .nota-normal{display:none}
 @media (max-width:1100px){
   body.pres:not(.g) .cbody{grid-template-columns:1fr 1fr}
 }
@@ -371,6 +404,21 @@ body.pres:not(.g) .zona-c > .detalle{display:none}
 body.pres:not(.g) .act{margin-top:0;border:1px solid #2b3d57;border-radius:9px;
    padding:8px 12px;background:var(--card2)}
 body.pres:not(.g) .blk{margin-top:0;padding:8px 12px}
+
+/* Las cajas se ajustan al alto disponible: el titulo y el pie SIEMPRE se ven,
+   y lo que se recorta es la tabla del medio. Antes se cortaba el aviso de
+   "y N mas", que es justo lo que explica que falten filas. */
+body.pres:not(.g) .act,
+body.pres:not(.g) .blk{display:flex;flex-direction:column;min-height:0;
+   max-height:100%}
+body.pres:not(.g) .act > h3,
+body.pres:not(.g) .blk > h3,
+body.pres:not(.g) .act > .nota,
+body.pres:not(.g) .blk > .nota{flex:none}
+body.pres:not(.g) .act .scroll{flex:1;min-height:0;overflow:hidden}
+
+/* La columna Programa deja de comerse el ancho: aqui hacen falta todas */
+body.pres:not(.g) .btab .c-ancha{width:auto;max-width:clamp(120px,11vw,280px)}
 
 /* Los bloques vacios solo se ven en presentacion: un hueco sin titulo parece
    un fallo del panel. En la vista normal y en TV estorbarian. */
@@ -406,12 +454,7 @@ body.pres:not(.g) .card-h h2{font-size:clamp(1.5rem,2.6vw,3.4rem)}
 body.pres:not(.g) .card-h .tech,
 body.pres:not(.g) .status{font-size:clamp(.75rem,1.05vw,1.5rem)}
 body.pres:not(.g) .label{font-size:clamp(.68rem,.9vw,1.25rem)}
-body.pres:not(.g) .value{font-size:clamp(2.2rem,4vw,6rem);line-height:1.05}
 body.pres:not(.g) .value small{font-size:.38em}
-body.pres:not(.g) .pie{font-size:clamp(.62rem,.8vw,1.1rem)}
-body.pres:not(.g) .ichip{font-size:clamp(.62rem,.82vw,1.1rem);padding:3px 10px}
-body.pres:not(.g) .avisos{font-size:clamp(.65rem,.85vw,1.15rem)}
-body.pres:not(.g) .g{font-size:clamp(.68rem,.9vw,1.25rem)}
 body.pres:not(.g) .detalle table{font-size:clamp(.7rem,.9vw,1.25rem)}
 body.pres:not(.g) .subt{font-size:clamp(.62rem,.82vw,1.1rem)}
 body.pres:not(.g) canvas.chart{height:clamp(50px,11vh,150px)}
@@ -852,12 +895,14 @@ function sesionesHTML(i){
   ).join("");
 
   const pie = (total != null && total > s.length)
-    ? '<div class="nota">Mostrando las ' + s.length + " de " + fmt(total, 0) +
-      ", ordenadas por tiempo de espera</div>"
+    ? '<div class="nota nota-normal">Mostrando las ' + s.length + " de " +
+      fmt(total, 0) + ", ordenadas por tiempo de espera</div>"
     : "";
 
-  // En presentacion no hay scroll: se ven PRES_FILAS y se avisa del resto
-  const ocultas = Math.max(0, (total != null ? total : s.length) - PRES_FILAS);
+  // En presentacion no hay scroll: se ven como mucho PRES_FILAS filas de las
+  // que hemos traido, y el aviso cuenta contra el total real de la instancia
+  const visibles = Math.min(s.length, PRES_FILAS);
+  const ocultas = Math.max(0, (total != null ? total : s.length) - visibles);
   const pieP = ocultas
     ? '<div class="nota solo-pres">… y ' + fmt(ocultas, 0) +
       " más, ordenadas por tiempo de espera</div>"
