@@ -28,7 +28,13 @@ h1{margin:0;font-size:1.3rem;font-weight:800;text-transform:uppercase;
    border-radius:8px;padding:6px 12px;font-size:.82rem;cursor:pointer}
 .btns button:hover{border-color:var(--accent)}
 .btns button.on{background:#1d3a55;border-color:var(--accent);color:#fff}
-#clock{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+/* Fecha larga en 24 h y, debajo, la maquina donde corre el dashboard.
+   Igual en las tres vistas. */
+#clock{text-align:right;line-height:1.25}
+#clock .fecha{font-size:.82rem;font-weight:700;letter-spacing:.06em;
+   color:var(--text);font-variant-numeric:tabular-nums}
+#clock .srv{font-size:.75rem;color:var(--accent);text-transform:uppercase;
+   letter-spacing:.08em;font-weight:700}
 
 footer{margin-top:16px;padding:10px 2px 2px;border-top:1px solid #24334a;
    text-align:center;font-size:.7rem;color:var(--muted);letter-spacing:.1em;
@@ -280,6 +286,9 @@ body.tv .value small{font-size:.4em}
 body.tv .pie{font-size:clamp(.6rem,.85vw,1.1rem)}
 body.tv .m{align-items:center;text-align:center}
 body.tv .pill{font-size:clamp(.6rem,.85vw,1.1rem)}
+/* el reloj tambien crece en la tele y en presentacion */
+body.tv #clock .fecha,body.pres #clock .fecha{font-size:clamp(.72rem,1.05vw,1.55rem)}
+body.tv #clock .srv,body.pres #clock .srv{font-size:clamp(.68rem,.95vw,1.4rem)}
 /* En TV, indicadores y bloqueos van deliberadamente pequenos: lo que tiene
    que leerse desde lejos son las sesiones. Estos son datos de apoyo, y si
    crecen deforman la tarjeta. */
@@ -316,12 +325,7 @@ body.pres #pres-nav{flex:0 0 auto}
 body.pres header{justify-content:space-between;flex-wrap:nowrap}
 body.pres header .brand{margin-right:auto}
 
-/* A la derecha: fecha larga en 24 h y debajo el servidor del dashboard */
-body.pres #clock{text-align:right;line-height:1.25;margin-left:auto}
-body.pres #clock .fecha{font-size:clamp(.72rem,1.05vw,1.55rem);font-weight:700;
-   letter-spacing:.07em;color:var(--text);font-variant-numeric:tabular-nums}
-body.pres #clock .srv{font-size:clamp(.68rem,.95vw,1.4rem);color:var(--accent);
-   text-transform:uppercase;letter-spacing:.09em;font-weight:700}
+body.pres #clock{margin-left:auto}
 /* La clase .g marca la diapositiva "general": en ella se anade tambien la
    clase tv, asi que manda todo el CSS del Modo TV. Por eso lo especifico de
    una sola instancia va con :not(.g). */
@@ -1464,13 +1468,10 @@ function servidorDashboard(){
 
 function reloj(){
   const ahora = new Date();
-  const c = document.getElementById("clock");
-  if (presOn){
-    c.innerHTML = '<div class="fecha">' + esc(fechaLarga(ahora)) + "</div>" +
-                  '<div class="srv">' + esc(servidorDashboard()) + "</div>";
-  } else {
-    c.textContent = ahora.toLocaleString("es-ES");
-  }
+  const srv = servidorDashboard();
+  document.getElementById("clock").innerHTML =
+    '<div class="fecha">' + esc(fechaLarga(ahora)) + "</div>" +
+    (srv ? '<div class="srv">' + esc(srv) + "</div>" : "");
   if (disconnectedSince){
     const s = Math.floor((Date.now() - disconnectedSince)/1000);
     const hh = String(Math.floor(s/3600)).padStart(2,"0");
