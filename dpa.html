@@ -296,8 +296,12 @@ body.tv .blk h3{font-size:clamp(.5rem,.58vw,.85rem);margin-bottom:3px}
 body.pres{padding:10px 14px;overflow:hidden;height:100vh;
    display:flex;flex-direction:column}
 body.pres header{flex:none}
-body.pres #banner,body.pres #bloqueos-tv,body.pres .act,
-body.pres .site-h{display:none}
+body.pres #banner{display:none}
+/* La clase .g marca la diapositiva "general": en ella se anade tambien la
+   clase tv, asi que manda todo el CSS del Modo TV. Por eso lo especifico de
+   una sola instancia va con :not(.g). */
+body.pres:not(.g) #bloqueos-tv,
+body.pres:not(.g) .site-h{display:none}
 
 body.pres #pres-nav{display:flex;align-items:center;gap:14px;flex:none;
    margin-bottom:8px}
@@ -310,6 +314,8 @@ body.pres #pres-nav{display:flex;align-items:center;gap:14px;flex:none;
    display:block;flex:none}
 #pres-nav .p.on{opacity:1;color:var(--text);border-color:var(--cc)}
 #pres-nav .p.mal{border-color:var(--alarm)}
+#pres-nav .p.gen{--cc:var(--muted);font-weight:700}
+#pres-nav .p.gen.on{--cc:var(--text)}
 #pres-nav .cuenta{font-variant-numeric:tabular-nums;color:var(--muted);
    font-size:clamp(.6rem,.85vw,1.05rem);white-space:nowrap}
 #pres-nav .barra{width:clamp(60px,10vw,160px);height:5px;border-radius:999px;
@@ -318,39 +324,49 @@ body.pres #pres-nav{display:flex;align-items:center;gap:14px;flex:none;
    transition:width .95s linear}
 
 body.pres #sites{flex:1;min-height:0}
-body.pres section.site{height:100%;display:flex;flex-direction:column;
+body.pres:not(.g) section.site{height:100%;display:flex;flex-direction:column;
    padding:10px 14px}
-body.pres .cards{display:block;height:100%;gap:0}
-body.pres .card{display:none}
-body.pres .card.pres-on{display:flex;flex-direction:column;height:100%;
+body.pres:not(.g) .cards{display:block;height:100%;gap:0}
+body.pres:not(.g) .card{display:none}
+body.pres:not(.g) .card.pres-on{display:flex;flex-direction:column;height:100%;
    overflow:hidden}
-body.pres .cbody{flex:1;min-height:0;align-items:stretch}
-body.pres .zona{overflow:auto;overscroll-behavior:contain}
-/* la lista de bloqueos se queda dentro de la tarjeta: hay que acotarla o
-   recortaria por abajo justo lo que hay que leer */
-body.pres .card > .blk{flex:none;max-height:30vh;overflow:auto}
+body.pres:not(.g) .cbody{flex:none;align-items:stretch}
+body.pres:not(.g) .zona{overflow:hidden}
+body.pres:not(.g) .card > .blk{flex:none}
 @media (max-width:1100px){
-  body.pres .cbody{grid-template-columns:1fr 1fr}
-  body.pres .zona-c{display:none}
+  body.pres:not(.g) .cbody{grid-template-columns:1fr 1fr}
+  body.pres:not(.g) .zona-c{display:none}
 }
 
+/* Sin barras de scroll en presentacion: se ven las filas que caben y se avisa
+   del resto. Las gauges y el detalle ceden sitio a los listados. */
+body.pres:not(.g) .act{margin-top:10px}
+body.pres:not(.g) .act .scroll{max-height:none;overflow:hidden}
+body.pres:not(.g) .act tbody tr:nth-child(n+13){display:none}
+body.pres:not(.g) .blk tbody tr:nth-child(n+9){display:none}
+.solo-pres{display:none}
+body.pres:not(.g) .solo-pres{display:block}
+
 /* todo mas grande: hay pantalla entera para una sola instancia */
-body.pres .card-h h2{font-size:clamp(1.5rem,2.8vw,3.6rem)}
-body.pres .card-h .tech,body.pres .status{font-size:clamp(.75rem,1.05vw,1.5rem)}
-body.pres .label{font-size:clamp(.68rem,.95vw,1.3rem)}
-body.pres .value{font-size:clamp(2.4rem,4.6vw,7rem);line-height:1.05}
-body.pres .value small{font-size:.38em}
-body.pres .pie{font-size:clamp(.62rem,.85vw,1.15rem)}
-body.pres .ichip{font-size:clamp(.62rem,.85vw,1.15rem);padding:3px 10px}
-body.pres .avisos{font-size:clamp(.65rem,.9vw,1.2rem)}
-body.pres .g{font-size:clamp(.68rem,.95vw,1.3rem)}
-body.pres .detalle table{font-size:clamp(.7rem,.95vw,1.3rem)}
-body.pres .subt{font-size:clamp(.62rem,.85vw,1.15rem)}
-body.pres canvas.chart{height:clamp(52px,9vh,130px)}
-body.pres .clab{font-size:clamp(.6rem,.8vw,1.05rem)}
-body.pres .blk h3{font-size:clamp(.68rem,.95vw,1.3rem)}
-body.pres .btab{font-size:clamp(.68rem,.9vw,1.25rem)}
-body.pres .btab th{font-size:clamp(.58rem,.75vw,1rem)}
+body.pres:not(.g) .card-h h2{font-size:clamp(1.5rem,2.6vw,3.4rem)}
+body.pres:not(.g) .card-h .tech,
+body.pres:not(.g) .status{font-size:clamp(.75rem,1.05vw,1.5rem)}
+body.pres:not(.g) .label{font-size:clamp(.68rem,.9vw,1.25rem)}
+body.pres:not(.g) .value{font-size:clamp(2.2rem,4vw,6rem);line-height:1.05}
+body.pres:not(.g) .value small{font-size:.38em}
+body.pres:not(.g) .pie{font-size:clamp(.62rem,.8vw,1.1rem)}
+body.pres:not(.g) .ichip{font-size:clamp(.62rem,.82vw,1.1rem);padding:3px 10px}
+body.pres:not(.g) .avisos{font-size:clamp(.65rem,.85vw,1.15rem)}
+body.pres:not(.g) .g{font-size:clamp(.68rem,.9vw,1.25rem)}
+body.pres:not(.g) .detalle table{font-size:clamp(.7rem,.9vw,1.25rem)}
+body.pres:not(.g) .subt{font-size:clamp(.62rem,.82vw,1.1rem)}
+body.pres:not(.g) canvas.chart{height:clamp(44px,7vh,100px)}
+body.pres:not(.g) .clab{font-size:clamp(.6rem,.78vw,1rem)}
+body.pres:not(.g) .blk h3,
+body.pres:not(.g) .act h3{font-size:clamp(.68rem,.9vw,1.25rem)}
+body.pres:not(.g) .btab{font-size:clamp(.68rem,.88vw,1.2rem)}
+body.pres:not(.g) .btab th{font-size:clamp(.58rem,.74vw,1rem)}
+body.pres:not(.g) .nota{font-size:clamp(.62rem,.82vw,1.1rem)}
 
 #offline-overlay{display:none;position:fixed;inset:0;z-index:9999;
    background:rgba(8,12,24,.96);flex-direction:column;align-items:center;
@@ -779,13 +795,20 @@ function sesionesHTML(i){
       ", ordenadas por tiempo de espera</div>"
     : "";
 
+  // En presentacion no hay scroll: se ven PRES_FILAS y se avisa del resto
+  const ocultas = Math.max(0, (total != null ? total : s.length) - PRES_FILAS);
+  const pieP = ocultas
+    ? '<div class="nota solo-pres">… y ' + fmt(ocultas, 0) +
+      " más, ordenadas por tiempo de espera</div>"
+    : "";
+
   return '<div class="act">' +
            "<h3>Sesiones activas" +
              (total != null ? " <span class=\"pista\">(" + fmt(total, 0) + ")</span>" : "") +
            "</h3>" +
            '<div class="scroll"><table class="btab">' +
              "<thead><tr>" + cab + "</tr></thead><tbody>" + cuerpo + "</tbody>" +
-           "</table></div>" + pie +
+           "</table></div>" + pie + pieP +
          "</div>";
 }
 
@@ -1051,9 +1074,15 @@ function tickHist(estado){
 
 // --------------------------------------------------- modo presentacion
 
-const PRES_SEG = 15;          // segundos por instancia
+const PRES_SEG = 15;    // segundos por diapositiva
+const PRES_FILAS = 12;  // filas visibles por tabla, sin scroll
+
+// Orden de rotacion. Se comparan con el nombre corto (el de Modo TV). Las
+// instancias que no aparezcan aqui se anaden al final por orden alfabetico.
+const PRES_ORDEN = ["ATENEA2", "SRVPBI", "PROMETEO", "AQUILES", "SCALEPROD"];
+
 let presOn = false;
-let presIdx = 0;
+let presIdx = 0;        // indice dentro de la secuencia de diapositivas
 let presResta = PRES_SEG;
 let presPausa = false;
 
@@ -1061,17 +1090,41 @@ function presInstancias(){
   return (window.__ultimoEstado && window.__ultimoEstado.instancias) || [];
 }
 
-// Las instancias con problemas se quedan el doble de tiempo
-function presDuracion(inst){
+// Secuencia: una pantalla general cada dos instancias.
+//   General · ATENEA2 · SRVPBI · General · PROMETEO · AQUILES · General · SCALEPROD
+function presSecuencia(){
+  const insts = presInstancias();
+  if (!insts.length) return [];
+
+  const orden = [];
+  PRES_ORDEN.forEach(corto => {
+    const k = insts.findIndex(i => tituloTV(i.nombre) === corto);
+    if (k >= 0 && orden.indexOf(k) < 0) orden.push(k);
+  });
+  insts.forEach((_, k) => { if (orden.indexOf(k) < 0) orden.push(k); });
+
+  const pasos = [];
+  orden.forEach((k, n) => {
+    if (n % 2 === 0) pasos.push({t: "g"});
+    pasos.push({t: "i", k: k});
+  });
+  return pasos;
+}
+
+// Las instancias con problemas se quedan el doble de tiempo. La general,
+// siempre lo mismo.
+function presDuracion(paso){
+  if (!paso || paso.t === "g") return PRES_SEG;
+  const inst = presInstancias()[paso.k];
   const mal = inst && (inst.nivel === "critico" || inst.nivel === "caido");
   return mal ? PRES_SEG * 2 : PRES_SEG;
 }
 
 function presIr(idx){
-  const n = presInstancias().length;
-  if (!n) return;
-  presIdx = ((idx % n) + n) % n;
-  presResta = presDuracion(presInstancias()[presIdx]);
+  const pasos = presSecuencia();
+  if (!pasos.length){ presAplicar(); return; }
+  presIdx = ((idx % pasos.length) + pasos.length) % pasos.length;
+  presResta = presDuracion(pasos[presIdx]);
   presAplicar();
   // las graficas se dibujaron con la tarjeta oculta (ancho 0): hay que
   // repintarlas ahora que tiene tamano real
@@ -1081,19 +1134,37 @@ function presIr(idx){
 function presAplicar(){
   if (!presOn) return;
   const insts = presInstancias();
+  const pasos = presSecuencia();
   const tarjetas = [...document.querySelectorAll("#sites .card")];
-  if (!tarjetas.length) return;
+  if (!pasos.length || !tarjetas.length) return;
 
-  const n = Math.min(tarjetas.length, insts.length || tarjetas.length);
-  if (presIdx >= n){ presIdx = 0; presResta = presDuracion(insts[0]); }
+  if (presIdx >= pasos.length){ presIdx = 0; presResta = presDuracion(pasos[0]); }
+  const paso = pasos[presIdx];
+  const general = paso.t === "g";
 
-  tarjetas.forEach((c, k) => c.classList.toggle("pres-on", k === presIdx));
+  // En la general se anade la clase tv y manda todo el CSS del Modo TV
+  document.body.classList.toggle("g", general);
+  document.body.classList.toggle("tv", general);
 
-  const total = presDuracion(insts[presIdx]);
+  if (general){
+    tarjetas.forEach(c => c.classList.remove("pres-on"));
+    fitTV();
+  } else {
+    tarjetas.forEach((c, k) => c.classList.toggle("pres-on", k === paso.k));
+    document.getElementById("sites").style.height = "";
+  }
+
+  const total = presDuracion(paso);
   const pct = Math.max(0, Math.min(100, (presResta / total) * 100));
-  const rota = insts.length > 1;
+  const rota = pasos.length > 1;
 
-  const puntos = insts.map((i, k) => {
+  const puntos = pasos.map((p, k) => {
+    if (p.t === "g"){
+      return '<span class="p gen' + (k === presIdx ? " on" : "") +
+             '" data-idx="' + k + '"><i></i>General</span>';
+    }
+    const i = insts[p.k];
+    if (!i) return "";
     const mal = (i.nivel === "critico" || i.nivel === "caido") ? " mal" : "";
     return '<span class="p' + (k === presIdx ? " on" : "") + mal +
            '" data-idx="' + k + '" style="--cc:' + colorServidor(i.nombre) + '">' +
@@ -1117,8 +1188,7 @@ function presAplicar(){
 
 function presTick(){
   if (!presOn || presPausa) return;
-  const insts = presInstancias();
-  if (insts.length < 2){ presAplicar(); return; }
+  if (presSecuencia().length < 2){ presAplicar(); return; }
   presResta--;
   if (presResta <= 0) presIr(presIdx + 1);
   else presAplicar();
@@ -1128,8 +1198,10 @@ function presTick(){
 // otro: si salimos y volvemos a entrar en fullscreen en el mismo gesto, se ve
 // un parpadeo y el navegador puede rechazar la segunda peticion.
 function togglePres(mantenerFs){
-  if (document.body.classList.contains("tv")) toggleTV(true);
-  presOn = !document.body.classList.contains("pres");
+  const estaba = document.body.classList.contains("pres");
+  // si veniamos de Modo TV "de verdad" (no de la diapositiva general)
+  if (!estaba && document.body.classList.contains("tv")) toggleTV(true);
+  presOn = !estaba;
   document.body.classList.toggle("pres", presOn);
   document.getElementById("btn-pres").classList.toggle("on", presOn);
 
@@ -1144,6 +1216,10 @@ function togglePres(mantenerFs){
     if (!mantenerFs && document.exitFullscreen && document.fullscreenElement){
       document.exitFullscreen();
     }
+    // la diapositiva general deja puestas las clases g y tv: hay que quitarlas
+    document.body.classList.remove("g", "tv");
+    document.getElementById("btn-tv").classList.remove("on");
+    document.getElementById("sites").style.height = "";
     const nav = document.getElementById("pres-nav");
     nav.innerHTML = "";
     nav.dataset.firma = "";
@@ -1161,8 +1237,10 @@ function fitTV(){
   const panel = document.getElementById("bloqueos-tv");
 
   const pie = document.querySelector("footer");
+  const nav = document.getElementById("pres-nav");
+  const navAlto = (nav && nav.offsetHeight) || 0;   // solo en presentacion
   const disponible = window.innerHeight - header.offsetHeight -
-                     (pie ? pie.offsetHeight : 0) - 16;
+                     (pie ? pie.offsetHeight : 0) - navAlto - 16;
   const hayPanel = panel && panel.style.display !== "none" && panel.innerHTML;
 
   if (hayPanel){

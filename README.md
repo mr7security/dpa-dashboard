@@ -103,10 +103,27 @@ alarma y la lista de avisos.
 |---|---|---|
 | **Normal** | mirar desde el PC | un servidor por fila, a todo el ancho, con las tres zonas: métricas y medidores, detalle y AG, gráficas y disco. Debajo, bloqueos y sesiones activas |
 | **Modo TV** | pantalla de sala | las cinco instancias a la vez, solo sesiones e indicadores, y un panel de bloqueos abajo que ocupa el hueco restante |
-| **Presentación** | rotación desatendida | una instancia cada vez a pantalla completa con todo el detalle, cambiando cada 15 s (30 s si está en crítico) |
+| **Presentación** | rotación desatendida | alterna la vista general con cada instancia a pantalla completa, cambiando cada 15 s (30 s si está en crítico) |
 
-En Presentación: flechas para moverse, espacio para pausar, Escape para salir,
-y clic en cualquier nombre de la tira superior para saltar a esa instancia.
+### La secuencia de Presentación
+
+Una pantalla general cada dos instancias:
+
+```
+General → ATENEA2 → SRVPBI → General → PROMETEO → AQUILES → General → SCALEPROD → (vuelta)
+```
+
+El orden vive en la constante `PRES_ORDEN` de `dpa.html`, con los nombres
+cortos. Las instancias que no aparezcan ahí se añaden al final, así que si
+mañana registras una nueva en DPA entra sola en la rotación sin tocar nada.
+
+En la pantalla de cada instancia se ve todo: métricas, medidores, detalle,
+gráficas, AG, y los **listados completos de sesiones activas y bloqueos**, sin
+barras de scroll — se muestran las 12 primeras filas por tiempo de espera y al
+pie se indica cuántas quedan fuera.
+
+Controles: flechas para moverse, espacio para pausar, Escape para salir, y
+clic en cualquier nombre de la tira superior para saltar ahí.
 
 ### Semáforo
 
