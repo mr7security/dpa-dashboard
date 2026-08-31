@@ -92,7 +92,7 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
    text-align:center}
 .m{display:flex;flex-direction:column;gap:1px;min-width:0;align-items:center}
 .label{font-size:.66rem;color:var(--muted);text-transform:uppercase;
-   letter-spacing:.07em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+   letter-spacing:.06em;max-width:100%;overflow-wrap:anywhere;line-height:1.2}
 .value{font-size:2.4rem;font-weight:800;line-height:1.05;
    font-variant-numeric:tabular-nums}
 .value small{font-size:.9rem;color:var(--muted);font-weight:600;margin-left:3px}
@@ -297,6 +297,10 @@ body.pres{padding:10px 14px;overflow:hidden;height:100vh;
    display:flex;flex-direction:column}
 body.pres header{flex:none}
 body.pres #banner{display:none}
+/* Pantalla limpia: los botones estorban en una tele. Reaparecen al pasar el
+   raton por la cabecera; para salir sin raton, Escape. */
+body.pres header .btns{display:none}
+body.pres header:hover .btns{display:flex}
 /* La clase .g marca la diapositiva "general": en ella se anade tambien la
    clase tv, asi que manda todo el CSS del Modo TV. Por eso lo especifico de
    una sola instancia va con :not(.g). */
@@ -339,8 +343,29 @@ body.pres:not(.g) .card > .blk{flex:none}
 }
 
 /* Sin barras de scroll en presentacion: se ven las filas que caben y se avisa
-   del resto. Las gauges y el detalle ceden sitio a los listados. */
-body.pres:not(.g) .act{margin-top:10px}
+   del resto. Los listados ocupan el sitio de las tablas de detalle: no caben
+   las dos cosas, y en una tele manda lo que esta pasando ahora. */
+body.pres:not(.g) .zona-b > .detalle,
+body.pres:not(.g) .zona-c > .detalle{display:none}
+body.pres:not(.g) .act,
+body.pres:not(.g) .blk{margin-top:0;border-top:none;padding-top:0}
+body.pres:not(.g) .zona-c .charts{margin-top:14px}
+
+/* En una columna no caben trece columnas de tabla: se dejan las que dicen
+   quien es, contra que espera y cuanto lleva. El resto sigue en la vista
+   normal, que es donde se investiga. */
+body.pres:not(.g) .act .c-k-login,
+body.pres:not(.g) .act .c-k-comando,
+body.pres:not(.g) .act .c-k-estado,
+body.pres:not(.g) .act .c-k-trans_abiertas,
+body.pres:not(.g) .act .c-k-bloqueado_por,
+body.pres:not(.g) .blk .c-k-login,
+body.pres:not(.g) .blk .c-k-comando,
+body.pres:not(.g) .blk .c-k-estado,
+body.pres:not(.g) .blk .c-k-recurso,
+body.pres:not(.g) .blk .c-k-trans_abiertas,
+body.pres:not(.g) .blk .c-k-host,
+body.pres:not(.g) .blk .c-k-bd{display:none}
 body.pres:not(.g) .act .scroll{max-height:none;overflow:hidden}
 body.pres:not(.g) .act tbody tr:nth-child(n+13){display:none}
 body.pres:not(.g) .blk tbody tr:nth-child(n+9){display:none}
@@ -735,10 +760,11 @@ function celdaBloqueo(s, col){
 function tablaBloqueos(lista, soloTV){
   const cols = COLS_BLOQUEO.filter(c => !soloTV || c.tv);
   const cab = cols.map(c =>
-    '<th class="' + c.cls + '">' + esc(c.t) + "</th>").join("");
+    '<th class="' + c.cls + " c-k-" + c.k + '">' + esc(c.t) + "</th>").join("");
   const cuerpo = lista.map(s =>
     "<tr>" + cols.map(c =>
-      '<td class="' + c.cls + '" title="' + esc(String(s[c.k] == null ? "" : s[c.k])) + '">' +
+      '<td class="' + c.cls + " c-k-" + c.k + '" title="' +
+      esc(String(s[c.k] == null ? "" : s[c.k])) + '">' +
       celdaBloqueo(s, c) + "</td>"
     ).join("") + "</tr>"
   ).join("");
@@ -782,10 +808,11 @@ function sesionesHTML(i){
   if (!s.length) return "";
 
   const cab = COLS_SESION.map(c =>
-    '<th class="' + c.cls + '">' + esc(c.t) + "</th>").join("");
+    '<th class="' + c.cls + " c-k-" + c.k + '">' + esc(c.t) + "</th>").join("");
   const cuerpo = s.map(f =>
     "<tr>" + COLS_SESION.map(c =>
-      '<td class="' + c.cls + '" title="' + esc(String(f[c.k] == null ? "" : f[c.k])) + '">' +
+      '<td class="' + c.cls + " c-k-" + c.k + '" title="' +
+      esc(String(f[c.k] == null ? "" : f[c.k])) + '">' +
       celdaBloqueo(f, c) + "</td>"
     ).join("") + "</tr>"
   ).join("");
@@ -878,15 +905,15 @@ function tarjeta(i){
 
   const tira =
     '<div class="mstrip">' +
-      metrica("", "Sesiones activas", fmt(i.sesiones_activas, 0), "v-txt",
-              "Pico 1 h · " + fmt(i.sesiones_activas_max, 0) +
+      metrica("", "Activas", fmt(i.sesiones_activas, 0), "v-txt",
+              "Pico " + fmt(i.sesiones_activas_max, 0) +
               " · media " + fmt(i.sesiones_activas_media, 0)) +
       metrica("", "Bloqueadas", fmt(i.sesiones_bloqueadas, 0),
               colorBloqueadas(i.sesiones_bloqueadas),
-              "Pico 1 h · " + fmt(i.sesiones_bloqueadas_max, 0)) +
-      metrica("m-qual", "Espera de usuario (1 h)",
+              "Pico " + fmt(i.sesiones_bloqueadas_max, 0)) +
+      metrica("m-qual", "Espera 1 h",
               fmt(i.wait_total_hora, 0) + "<small>s</small>", colorEspera(i),
-              "Pico " + fmt(i.wait_pico, 1) + " s por 5 min") +
+              "Pico " + fmt(i.wait_pico, 1) + " s / 5 min") +
     "</div>";
 
   const graficas =
@@ -1131,6 +1158,19 @@ function presIr(idx){
   pintarTodas();
 }
 
+// En presentacion los listados suben a las columnas: las sesiones activas
+// ocupan la del centro y los bloqueos la de la derecha, encima de las
+// graficas. Se mueven los nodos en vez de duplicarlos.
+function presReubicarListas(tarjeta){
+  if (!tarjeta) return;
+  const zb = tarjeta.querySelector(".zona-b");
+  const zc = tarjeta.querySelector(".zona-c");
+  const act = tarjeta.querySelector(":scope > .act");
+  const blk = tarjeta.querySelector(":scope > .blk");
+  if (act && zb) zb.insertBefore(act, zb.firstChild);
+  if (blk && zc) zc.insertBefore(blk, zc.firstChild);
+}
+
 function presAplicar(){
   if (!presOn) return;
   const insts = presInstancias();
@@ -1152,6 +1192,7 @@ function presAplicar(){
   } else {
     tarjetas.forEach((c, k) => c.classList.toggle("pres-on", k === paso.k));
     document.getElementById("sites").style.height = "";
+    presReubicarListas(tarjetas[paso.k]);
   }
 
   const total = presDuracion(paso);
