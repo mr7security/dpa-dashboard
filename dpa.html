@@ -139,6 +139,20 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 .bcard .row:last-child{border-bottom:none}
 .nota{color:var(--muted);font-size:.76rem;padding:3px 0;font-style:italic}
 
+/* tabla de sesiones activas, con scroll propio y cabecera fija */
+.act{margin-top:12px;border-top:1px solid #24334a;padding-top:10px}
+.act h3{margin:0 0 6px;font-size:.68rem;text-transform:uppercase;
+   letter-spacing:.07em;color:var(--muted);font-weight:800}
+.act h3 .pista{color:var(--accent);opacity:.9}
+.act .scroll{max-height:230px;overflow:auto;overscroll-behavior:contain}
+.act .scroll thead th{position:sticky;top:0;background:var(--card);
+   border-bottom:1px solid #2b3d57;z-index:1}
+.act .btab td{border-bottom:1px solid #24334a}
+.act .scroll::-webkit-scrollbar{width:9px;height:9px}
+.act .scroll::-webkit-scrollbar-track{background:var(--card2);border-radius:6px}
+.act .scroll::-webkit-scrollbar-thumb{background:#33465f;border-radius:6px}
+.act .scroll::-webkit-scrollbar-thumb:hover{background:#43597a}
+
 /* indicadores por categoria, siempre visibles */
 .ind{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;justify-content:center}
 .zona-a .avisos{justify-content:center}
@@ -206,7 +220,7 @@ canvas.chart{width:100%;height:64px;display:block}
 body.tv{padding:10px 12px;overflow:hidden}
 /* En TV la tarjeta se queda en lo esencial: sesiones, bloqueos e indicadores */
 body.tv #banner,body.tv .card-h .tech,body.tv .upd,
-body.tv .detalle,body.tv .charts,body.tv .gauges,
+body.tv .detalle,body.tv .charts,body.tv .gauges,body.tv .act,
 body.tv .m-qual{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
 /* la seccion y su rejilla de tarjetas rellenan el alto que se les asigne */
@@ -658,6 +672,58 @@ function hayQueMostrarBloqueos(i){
 // El numero grande viene de la metrica de DPA (muestreo por minuto) y la lista
 // es una foto en vivo. Si el atasco ya se ha deshecho, lo decimos en vez de
 // dejar un numero sin explicacion.
+// Columnas de la tabla de sesiones activas. Sin "rol", que ahi no aplica.
+const COLS_SESION = [
+  {k:"spid",           t:"SPID",      cls:"c-spid"},
+  {k:"login",          t:"Login",     cls:"c-el"},
+  {k:"programa",       t:"Programa",  cls:"c-el c-ancha"},
+  {k:"host",           t:"Host",      cls:"c-el"},
+  {k:"bd",             t:"BD",        cls:"c-el"},
+  {k:"comando",        t:"Comando",   cls:""},
+  {k:"espera",         t:"Espera",    cls:"c-esp"},
+  {k:"espera_s",       t:"Tiempo",    cls:"c-num"},
+  {k:"trans_abiertas", t:"Trans.",    cls:"c-num"},
+  {k:"bloqueado_por",  t:"Bloq. por", cls:"c-num"},
+  {k:"estado",         t:"Estado",    cls:""}
+];
+
+// Tabla de sesiones activas: va a lo ancho de la tarjeta, con scroll propio y
+// cabecera fija, para que la tarjeta no crezca aunque haya 113 sesiones.
+function sesionesHTML(i){
+  const s = i.sesiones_detalle || [];
+  const total = i.sesiones_activas;
+
+  if (i.sesiones_detalle_error){
+    return '<div class="act"><h3>Sesiones activas</h3>' +
+           '<div class="nota">No he podido leer el detalle: ' +
+           esc(i.sesiones_detalle_error) + "</div></div>";
+  }
+  if (!s.length) return "";
+
+  const cab = COLS_SESION.map(c =>
+    '<th class="' + c.cls + '">' + esc(c.t) + "</th>").join("");
+  const cuerpo = s.map(f =>
+    "<tr>" + COLS_SESION.map(c =>
+      '<td class="' + c.cls + '" title="' + esc(String(f[c.k] == null ? "" : f[c.k])) + '">' +
+      celdaBloqueo(f, c) + "</td>"
+    ).join("") + "</tr>"
+  ).join("");
+
+  const pie = (total != null && total > s.length)
+    ? '<div class="nota">Mostrando las ' + s.length + " de " + fmt(total, 0) +
+      ", ordenadas por tiempo de espera</div>"
+    : "";
+
+  return '<div class="act">' +
+           "<h3>Sesiones activas" +
+             (total != null ? " <span class=\"pista\">(" + fmt(total, 0) + ")</span>" : "") +
+           "</h3>" +
+           '<div class="scroll"><table class="btab">' +
+             "<thead><tr>" + cab + "</tr></thead><tbody>" + cuerpo + "</tbody>" +
+           "</table></div>" + pie +
+         "</div>";
+}
+
 function contenidoBloqueos(i, soloTV){
   const b = i.bloqueos || [];
   if (b.length) return tablaBloqueos(b, soloTV);
@@ -765,6 +831,7 @@ function tarjeta(i){
           discoHTML(i) + "</div>" +
       "</div>" +
       bloqueosHTML(i) +
+      sesionesHTML(i) +
     "</div>";
 }
 

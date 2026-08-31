@@ -12,5 +12,10 @@
   "ventana_minutos": 60,
   "timeout_segundos": 20,
 
+  "_comentario_sesiones": "Detalle de sesiones activas. DPA devuelve MEGAS de HTML aqui (3 MB con 87 sesiones), por eso va a su propio ritmo. Ponlo a false si notas carga en DPA.",
+  "listar_sesiones_activas": true,
+  "max_sesiones": 60,
+  "intervalo_sesiones_segundos": 120,
+
   "excluir": []
 }

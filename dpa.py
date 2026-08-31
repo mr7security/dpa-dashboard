@@ -105,8 +105,9 @@ ORDEN_NIVEL = {"ok": 0, "aviso": 1, "critico": 2}
 # cuando se pueda, no motivo para saltar de la silla.
 CATEGORIAS_ROJAS = ("CPU", "Memory", "Network")
 
-# Cuantas sesiones bloqueadas listamos como maximo en una tarjeta.
+# Cuantas sesiones listamos como maximo en una tarjeta.
 MAX_BLOQUEOS = 8
+MAX_SESIONES = 60
 
 log = logging.getLogger("dpa")
 
@@ -378,6 +379,16 @@ class ClienteDPA(object):
             "cs": "1",
         })
 
+    def sesiones(self, db_id):
+        """HTML de la pestana 'Sessions': las sesiones activas ahora mismo."""
+        return self.pagina("realTimeTab.iwc", {
+            "db_id": str(db_id),
+            "action": "2",
+            "cs": "1",
+            "internal": "0",
+            "inactive": "0",
+        })
+
 
 # ---------------------------------------------------------------------------
 # Parseo y normalizacion
@@ -493,13 +504,17 @@ class _ExtractorTablas(HTMLParser):
                 t["celda"].append(data)
 
 
-def parsear_bloqueos(html_txt, maximo=MAX_BLOQUEOS):
+def parsear_sesiones(html_txt, maximo=MAX_BLOQUEOS, priorizar_bloqueadores=True):
     """
-    Convierte el HTML de la pestana Blocking en una lista de sesiones.
+    Convierte el HTML de una tabla de sesiones de DPA en una lista de dicts.
 
-    La tabla trae las columnas crudas de sysprocesses (spid, loginame,
-    program_name, lastwaittype, waittime...) y marca cada fila con
-    '(blocker)' o '(waiter)' dentro de la celda del spid.
+    Sirve tanto para la pestana Blocking como para la de Sessions: ambas
+    traen las columnas crudas de sysprocesses (spid, loginame, program_name,
+    lastwaittype, waittime...). En la de bloqueos, la celda del spid ademas
+    viene marcada con '(blocker)' o '(waiter)'.
+
+    priorizar_bloqueadores=True  -> primero quien bloquea (vista de bloqueos)
+    priorizar_bloqueadores=False -> primero quien mas lleva esperando
     """
     ex = _ExtractorTablas()
     try:
@@ -561,11 +576,19 @@ def parsear_bloqueos(html_txt, maximo=MAX_BLOQUEOS):
                 "espera_s": (espera_ms / 1000.0) if espera_ms is not None else None,
             })
 
-        # el que bloquea primero, que es el que hay que mirar
-        filas.sort(key=lambda f: 0 if f["rol"] == "bloquea" else 1)
+        if priorizar_bloqueadores:
+            # el que bloquea primero, que es el que hay que mirar
+            filas.sort(key=lambda f: 0 if f["rol"] == "bloquea" else 1)
+        else:
+            # las mas atascadas arriba
+            filas.sort(key=lambda f: -(f["espera_s"] or 0))
         return filas[:maximo]
 
     return []
+
+
+def parsear_bloqueos(html_txt, maximo=MAX_BLOQUEOS):
+    return parsear_sesiones(html_txt, maximo, priorizar_bloqueadores=True)
 
 
 def resumen(puntos):
@@ -688,6 +711,8 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "sesiones_bloqueadas_max": m["sesiones_bloqueadas"]["max"],
         "bloqueos": [],
         "bloqueos_error": None,
+        "sesiones_detalle": [],
+        "sesiones_detalle_error": None,
         "ag_detalle": None,
 
         # espera (lo grande, segundo bloque)
@@ -755,6 +780,14 @@ class Monitor(object):
         self.intervalo = int(cfg.get("intervalo_segundos", 15))
         self.ventana_min = int(cfg.get("ventana_minutos", 60))
         self.excluir = set(cfg.get("excluir", []))
+        self.listar_sesiones = bool(cfg.get("listar_sesiones_activas", True))
+        self.max_sesiones = int(cfg.get("max_sesiones", MAX_SESIONES))
+        # La tabla de sesiones activas son MEGAS de HTML por instancia (3 MB
+        # con 87 sesiones), asi que va a su propio ritmo, mucho mas lento que
+        # el resto del sondeo.
+        self.intervalo_sesiones = int(cfg.get("intervalo_sesiones_segundos", 120))
+        self._cache_sesiones = {}
+        self._cache_ses_lock = threading.Lock()
         self._estado = {"actualizado": None, "intervalo": self.intervalo,
                         "instancias": [], "error": None}
         self._lock = threading.Lock()
@@ -796,6 +829,17 @@ class Monitor(object):
                     inst["bloqueos"] = []
                     inst["bloqueos_error"] = str(e)
 
+            # Detalle de las sesiones activas. Se puede desactivar en la
+            # configuracion: es la peticion mas pesada de todas, sobre todo en
+            # instancias con muchas sesiones concurrentes.
+            if self.listar_sesiones and inst.get("sesiones_activas"):
+                try:
+                    inst["sesiones_detalle"] = self.detalle_sesiones(db_id)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("%s: no pude leer las sesiones activas: %s",
+                                meta.get("name"), e)
+                    inst["sesiones_detalle_error"] = str(e)
+
             destino[db_id] = inst
         except Exception as e:  # noqa: BLE001
             log.warning("%s: %s", meta.get("name"), e)
@@ -812,6 +856,25 @@ class Monitor(object):
                 "nivel": "caido",
                 "avisos": ["Sin respuesta de DPA"],
             }
+
+    def detalle_sesiones(self, db_id):
+        """
+        Sesiones activas, con cache propia. La respuesta de DPA son megas de
+        HTML, asi que no tiene sentido pedirla en cada ciclo: se refresca cada
+        `intervalo_sesiones_segundos` y entre medias se sirve la ultima.
+        """
+        ahora = time.time()
+        with self._cache_ses_lock:
+            hit = self._cache_sesiones.get(db_id)
+            if hit and ahora - hit[0] < self.intervalo_sesiones:
+                return hit[1]
+
+        lista = parsear_sesiones(self.cliente.sesiones(db_id),
+                                 maximo=self.max_sesiones,
+                                 priorizar_bloqueadores=False)
+        with self._cache_ses_lock:
+            self._cache_sesiones[db_id] = (ahora, lista)
+        return lista
 
     def ciclo(self):
         try:
