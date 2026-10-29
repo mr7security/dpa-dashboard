@@ -564,6 +564,15 @@ body.pres:not(.g) .blk tbody tr:nth-child(n+9){display:none}
 .solo-pres{display:none}
 body.pres:not(.g) .solo-pres{display:block}
 
+/* Cabecera centrada y en blanco: en una tele dedicada a una sola instancia
+   el nombre es el titulo de la pantalla, no una etiqueta mas de la tarjeta.
+   El color del servidor se sigue viendo en el filete lateral de la tarjeta. */
+body.pres:not(.g) .card-h{justify-content:center;text-align:center;
+   gap:12px;margin-bottom:14px;position:relative}
+body.pres:not(.g) .card-h h2{color:#fff;width:auto}
+body.pres:not(.g) .card-h .status{margin-left:0;position:absolute;right:0;
+   top:50%;transform:translateY(-50%)}
+
 /* todo mas grande: hay pantalla entera para una sola instancia */
 body.pres:not(.g) .card-h h2{font-size:clamp(1.5rem,2.6vw,3.4rem)}
 body.pres:not(.g) .card-h .tech,
@@ -645,6 +654,10 @@ body.solo #franja{
   padding:clamp(6px,1.1vh,14px) clamp(14px,2vw,34px)
 }
 body.solo.fr-on #franja{transform:translateY(0)}
+/* confirmacion de que el problema se ha resuelto */
+body.solo.fr-ok #franja{
+  background:linear-gradient(90deg,#14532d,#15803d 55%,#14532d);
+  border-top-color:#86efac}
 body.solo:not(.fr-hay) #franja{display:none}
 #franja .fr-in{
   display:flex;align-items:center;gap:clamp(12px,2vw,30px);flex-wrap:wrap;
@@ -734,6 +747,30 @@ const NIVEL_INFO = {
   critico: {cls:"alarm", txt:"⚠ CRÍTICO", card:"alarm"},
   caido:   {cls:"off",   txt:"✖ CAÍDO",  card:"offline"}
 };
+
+// ---------------------------------------------------------------------------
+// TEMPORAL — quitar cuando se corrijan los fallos de ATENEA2.
+//
+// Esta instancia esta en critico de forma permanente por CPU y memoria, y lo
+// va a seguir estando hasta que se apliquen las correcciones del informe. Un
+// rojo que no se apaga nunca deja de ser una alarma y se convierte en
+// decorado: la gente deja de mirarlo.
+//
+// Lo que se hace NO es ocultar el estado, es bajarlo de critico a aviso
+// (ambar). La informacion sigue ahi. Y hay una excepcion deliberada: si
+// aparece una SESION BLOQUEADA, vuelve el rojo. Ese era el criterio de alarma
+// original y es lo unico que justifica levantarse de la silla.
+// ---------------------------------------------------------------------------
+const SIN_ROJO_PERMANENTE = ["ATENEA2"];
+
+function nivelMostrado(i){
+  const n = i.nivel;
+  if (n !== "critico") return n;
+  if (SIN_ROJO_PERMANENTE.indexOf(tituloTV(i.nombre)) < 0) return n;
+  // el bloqueo sigue siendo motivo de rojo, pase lo que pase
+  const bloq = (i.sesiones_bloqueadas || 0) > 0 || (i.bloqueos || []).length > 0;
+  return bloq ? "critico" : "aviso";
+}
 
 const CAT_ES = {
   "CPU":"CPU", "Memory":"Memoria", "Disk":"Disco", "Sessions":"Sesiones",
@@ -1448,7 +1485,7 @@ function indicadoresHTML(i){
 // -------------------------------------------------------------------- render
 
 function tarjeta(i){
-  const info = NIVEL_INFO[i.nivel] || NIVEL_INFO.caido;
+  const info = NIVEL_INFO[nivelMostrado(i)] || NIVEL_INFO.caido;
 
   const metrica = (clase, etiqueta, valor, color, pie) =>
     '<div class="m ' + clase + '">' +
@@ -1932,17 +1969,50 @@ function franjaProblemas(){
   });
 }
 
+// Cuando un problema se resuelve no basta con que la franja desaparezca: si
+// nadie estaba mirando en ese momento, el incidente pasa sin que conste que
+// termino. Se muestra una confirmacion en verde unos segundos y luego se
+// retira sola.
+const FRANJA_OK_S = 12;
+let franjaPrev = "";       // firma de los problemas del ciclo anterior
+let franjaOkHasta = 0;     // marca de tiempo hasta la que se ve el verde
+let franjaOkTxt = "";
+
 function pintarFranja(){
   const fr = document.getElementById("franja");
   if (!soloOn){
-    document.body.classList.remove("fr-on", "fr-hay");
+    document.body.classList.remove("fr-on", "fr-hay", "fr-ok");
+    franjaPrev = ""; franjaOkHasta = 0;
     return;
   }
   const probs = franjaProblemas();
-  document.body.classList.toggle("fr-hay", probs.length > 0);
+  const firma = probs.map(p => p.nombre + ":" + p.detalle).sort().join("|");
+
+  // ha dejado de haber problemas y antes los habia -> confirmacion en verde
+  if (!probs.length && franjaPrev){
+    const nombres = franjaPrev.split("|")
+      .map(x => x.split(":")[0])
+      .filter((v, k, a) => a.indexOf(v) === k);
+    franjaOkTxt = nombres.join(", ");
+    franjaOkHasta = Date.now() + FRANJA_OK_S * 1000;
+  }
+  franjaPrev = firma;
+
+  const enOk = !probs.length && Date.now() < franjaOkHasta;
+  document.body.classList.toggle("fr-hay", probs.length > 0 || enOk);
+  document.body.classList.toggle("fr-ok", enOk);
+
+  if (enOk){
+    fr.querySelector(".fr-in").innerHTML =
+      '<span class="fr-ico">&#10004;</span>' +
+      '<span class="fr-tit">Resuelto</span>' +
+      '<span class="fr-it"><b>' + esc(franjaOkTxt) + "</b>" +
+      '<span class="fr-d">sin bloqueos</span></span>';
+    document.body.classList.add("fr-on");   // el verde se ve entero, sin ciclo
+    return;
+  }
 
   if (!probs.length){
-    // al normalizarse se retira de inmediato y se reinicia el ciclo
     document.body.classList.remove("fr-on");
     franjaSeg = 0;
     return;
@@ -1958,7 +2028,17 @@ function pintarFranja(){
 }
 
 function franjaTick(){
-  if (!soloOn || !document.body.classList.contains("fr-hay")) return;
+  if (!soloOn) return;
+  // mientras dura la confirmacion verde no se aplica el ciclo de asomar y
+  // esconderse: se ve entera y se retira al caducar
+  if (document.body.classList.contains("fr-ok")){
+    if (Date.now() >= franjaOkHasta){
+      document.body.classList.remove("fr-on", "fr-ok", "fr-hay");
+      franjaSeg = 0;
+    }
+    return;
+  }
+  if (!document.body.classList.contains("fr-hay")) return;
   franjaSeg++;
   const t = franjaSeg % FRANJA_CICLO_S;
   document.body.classList.toggle("fr-on", t < FRANJA_VIS_S);
