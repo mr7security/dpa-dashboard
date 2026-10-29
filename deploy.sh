@@ -35,6 +35,26 @@ if ! command -v python3 >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq python3
 fi
 
+# pymssql solo hace falta si se activa el bloque "sql_directo" de la config:
+# sirve para resolver el nombre de los jobs del Agent y leer los que estan en
+# ejecucion, cosas que DPA no expone. Si no se puede instalar no pasa nada, el
+# panel arranca igual sin esos extras.
+if python3 -c "import pymssql" >/dev/null 2>&1; then
+  verde "pymssql ya disponible (SQL directo soportado)"
+else
+  amar "Instalando pymssql para el SQL directo (opcional)..."
+  if ! python3 -m pip --version >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq python3-pip || true
+  fi
+  # --break-system-packages hace falta en Debian 12 / Ubuntu 24 (PEP 668)
+  python3 -m pip install --quiet pymssql --break-system-packages 2>/dev/null \
+    || python3 -m pip install --quiet pymssql 2>/dev/null \
+    || apt-get install -y -qq python3-pymssql 2>/dev/null \
+    || amar "No he podido instalar pymssql. El panel funcionara igual, pero
+         sin nombres de job ni jobs en ejecucion. Para activarlo luego:
+           sudo python3 -m pip install pymssql --break-system-packages"
+fi
+
 if ! id "$USUARIO" >/dev/null 2>&1; then
   verde "Creando usuario de servicio $USUARIO"
   useradd --system --no-create-home --shell /usr/sbin/nologin "$USUARIO"

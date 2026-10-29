@@ -20,5 +20,39 @@
   "max_sesiones": 60,
   "intervalo_sesiones_segundos": 120,
 
+  "_comentario_sql": [
+    "OPCIONAL. Conexion directa de solo lectura a las instancias, para lo que",
+    "DPA no expone: el nombre de los jobs del Agent (en program_name SQL Server",
+    "escribe el job_id en binario, no el nombre) y los jobs en ejecucion.",
+    "Si falta este bloque, si pymssql no esta instalado o si la conexion falla,",
+    "el panel funciona igual con los datos de DPA: esto solo anade.",
+    "",
+    "Requisitos de la cuenta (ademas de VIEW SERVER STATE que ya tiene",
+    "dpaMONITOR): pertenecer a SQLAgentReaderRole en msdb. Sin ese rol,",
+    "sys.sysjobs solo devuelve los jobs de los que la cuenta es duena, que",
+    "normalmente son cero, y los nombres saldran vacios.",
+    "",
+    "   USE msdb;",
+    "   CREATE USER dpaMONITOR FOR LOGIN dpaMONITOR;",
+    "   ALTER ROLE SQLAgentReaderRole ADD MEMBER dpaMONITOR;",
+    "",
+    "La clave de 'instancias' tiene que ser EXACTAMENTE el nombre que muestra",
+    "DPA para esa instancia, el mismo que sale en la cabecera de la tarjeta."
+  ],
+  "sql_directo": {
+    "activo": false,
+    "timeout_segundos": 8,
+    "intervalo_nombres_segundos": 900,
+    "intervalo_jobs_segundos": 30,
+    "instancias": {
+      "SRVPRORPDB01 via ATENEA2": {
+        "host": "10.0.0.136",
+        "puerto": 1433,
+        "usuario": "dpaMONITOR",
+        "password": "CAMBIAME"
+      }
+    }
+  },
+
   "excluir": []
 }

@@ -428,6 +428,8 @@ body.pres:not(.g) .btab .c-ancha{width:auto;max-width:clamp(120px,11vw,280px)}
    un fallo del panel. En la vista normal y en TV estorbarian. */
 .act.vacio,.blk.vacio{display:none}
 body.pres:not(.g) .act.vacio,
+body.pres:not(.g) .jobs.vacio{display:none}
+body.tv .jobs.vacio{display:none}
 body.pres:not(.g) .blk.vacio{display:block}
 body.pres:not(.g) .blk.vacio{background:var(--card2);border-color:#2b3d57}
 body.pres:not(.g) .blk.vacio h3{color:var(--muted)}
@@ -478,7 +480,38 @@ body.pres:not(.g) .nota{font-size:clamp(.62rem,.82vw,1.1rem)}
    letter-spacing:.04em}
 #offline-overlay .s{font-size:clamp(1rem,2.4vw,2.4rem);color:var(--muted)}
 #offline-overlay .cron{font-size:clamp(1.4rem,4vw,4rem);font-variant-numeric:tabular-nums}
-body.tv.sincon #offline-overlay,
+body.tv.sincon #offline-overlay{display:flex}
+
+/* Nombre de job resuelto contra msdb: se distingue del texto crudo */
+.jobn{color:#7dd3fc;font-weight:700}
+
+/* Jobs del Agent en ejecucion ahora mismo */
+.jobs{margin-top:10px;border:1px solid #2b3d57;border-radius:9px;
+  background:var(--card2);padding:8px 12px}
+.jobs h3{margin:0 0 6px;font-size:.72rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:800}
+.jobs h3 .pista{color:#7dd3fc}
+.jobs ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;
+  gap:5px 8px}
+.jobs li{display:inline-flex;align-items:baseline;gap:7px;
+  background:rgba(125,211,252,.1);border:1px solid rgba(125,211,252,.28);
+  border-radius:999px;padding:2px 10px;font-size:.78rem;max-width:100%}
+.jobs li.lento{background:rgba(185,28,28,.16);border-color:rgba(252,165,165,.55)}
+.jobs li b{font-weight:700;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.jobs li .t{color:var(--muted);font-weight:700;white-space:nowrap}
+.jobs li.lento .t{color:#fca5a5}
+body.tv .jobs li,body.pres .jobs li{font-size:clamp(.62rem,.82vw,1.1rem)}
+body.tv .jobs h3,body.pres .jobs h3{font-size:clamp(.55rem,.7vw,.95rem)}
+
+/* Marca de hilos paralelos agrupados en una sola fila de sesiones */
+.hilos{
+  display:inline-block;margin-left:7px;padding:1px 8px;border-radius:999px;
+  background:rgba(167,139,250,.16);border:1px solid rgba(167,139,250,.5);
+  color:#c4b5fd;font-weight:800;font-size:.82em;white-space:nowrap
+}
+body.tv .hilos,body.pres .hilos{font-size:.76em;padding:1px 9px}
+
 body.pres.sincon #offline-overlay{display:flex}
 
 /* ------------------------------------------------- modo Solo ATENEA2
@@ -871,6 +904,10 @@ function celdaBloqueo(s, col){
   }
   if (col.k === "espera_s")       return v == null ? "—" : fmtDur(v);
   if (col.k === "trans_abiertas") return v == null ? "—" : fmt(v, 0);
+  if (col.k === "programa" && v){
+    const p = programaCorto(v, s.job_nombre);
+    return p.job ? '<span class="jobn">' + esc(p.txt) + "</span>" : esc(p.txt);
+  }
   if (v === null || v === undefined || v === "") return "—";
   return esc(v);
 }
@@ -880,11 +917,14 @@ function tablaBloqueos(lista, soloTV){
   const cab = cols.map(c =>
     '<th class="' + c.cls + " c-k-" + c.k + '">' + esc(c.t) + "</th>").join("");
   const cuerpo = lista.map(s =>
-    "<tr>" + cols.map(c =>
-      '<td class="' + c.cls + " c-k-" + c.k + '" title="' +
-      esc(String(s[c.k] == null ? "" : s[c.k])) + '">' +
-      celdaBloqueo(s, c) + "</td>"
-    ).join("") + "</tr>"
+    "<tr>" + cols.map(c => {
+      // el programa lleva tooltip propio: el crudo trae el job_id en binario
+      const tit = (c.k === "programa" && s.programa)
+        ? programaCorto(s.programa, s.job_nombre).tit
+        : String(s[c.k] == null ? "" : s[c.k]);
+      return '<td class="' + c.cls + " c-k-" + c.k + '" title="' + esc(tit) +
+             '">' + celdaBloqueo(s, c) + "</td>";
+    }).join("") + "</tr>"
   ).join("");
   return '<table class="btab"><thead><tr>' + cab + "</tr></thead><tbody>" +
          cuerpo + "</tbody></table>";
@@ -912,10 +952,68 @@ const COLS_SESION = [
   {k:"estado",         t:"Estado",    cls:""}
 ];
 
+// SQL Server pone en program_name el job_id en binario, no el nombre:
+//   SQLAgent - TSQL JobStep (Job 0x4C6D7259FBCE654E... : Step 1)
+// Los tres primeros grupos del GUID van en little-endian, asi que hay que
+// darles la vuelta byte a byte para recomponerlo.
+function jobGuid(hex){
+  const h = String(hex || "").replace(/^0x/i, "").toUpperCase();
+  if (h.length < 32) return null;
+  const b = k => h.substr(k * 2, 2);
+  return b(3)+b(2)+b(1)+b(0) + "-" + b(5)+b(4) + "-" + b(7)+b(6) + "-" +
+         b(8)+b(9) + "-" + b(10)+b(11)+b(12)+b(13)+b(14)+b(15);
+}
+
+// Deja legible el programa. Si el colector ha podido resolver el nombre del
+// job contra msdb lo usamos; si no (pymssql ausente, SQL directo apagado o
+// conexion caida), caemos a los 8 primeros digitos del GUID, que al menos
+// distinguen un job de otro.
+function programaCorto(p, jobNombre){
+  const t = String(p || "");
+  const m = t.match(/SQLAgent\s*-\s*TSQL\s*JobStep\s*\(\s*Job\s+(0x[0-9A-Fa-f]+)[^)]*?(?::\s*Step\s*(\d+))?\s*\)/i);
+  if (!m) return {txt: t, tit: t, job: false};
+  const g = jobGuid(m[1]);
+  const paso = m[2] ? " · paso " + m[2] : "";
+  if (jobNombre){
+    return {
+      txt: jobNombre + paso,
+      tit: "Job de SQL Agent: " + jobNombre + paso + (g ? "\njob_id: " + g : ""),
+      job: true
+    };
+  }
+  const corto = g ? g.split("-")[0] : m[1].slice(2, 10).toUpperCase();
+  return {
+    txt: "SQL Agent · job " + corto + paso,
+    tit: "SQL Agent JobStep" + paso + (g ? "\njob_id: " + g : "") +
+         "\n\nNombre sin resolver. Para verlo:\n" +
+         "SELECT name FROM msdb.dbo.sysjobs WHERE job_id = '" + (g || "") + "'",
+    job: false
+  };
+}
+
+// Las consultas paralelas aparecen una vez por hilo: el mismo SPID repetido
+// 10 veces con la misma espera. Se agrupan en una fila y se anota cuantos
+// hilos hay, que ademas deja el paralelismo a la vista.
+function agruparSesiones(lista){
+  const porSpid = new Map();
+  lista.forEach(f => {
+    const k = (f.spid == null || f.spid === "") ? Math.random() : String(f.spid);
+    const g = porSpid.get(k);
+    if (!g){ porSpid.set(k, {fila: f, hilos: 1, maxEspera: f.espera_s || 0}); return; }
+    g.hilos++;
+    // nos quedamos con la fila de mayor espera: es la representativa
+    if ((f.espera_s || 0) > (g.maxEspera || 0)){ g.fila = f; g.maxEspera = f.espera_s || 0; }
+  });
+  return [...porSpid.values()]
+    .map(g => Object.assign({}, g.fila, {__hilos: g.hilos}))
+    .sort((a, b) => (b.espera_s || 0) - (a.espera_s || 0));
+}
+
 // Tabla de sesiones activas: va a lo ancho de la tarjeta, con scroll propio y
 // cabecera fija, para que la tarjeta no crezca aunque haya 113 sesiones.
 function sesionesHTML(i){
-  const s = i.sesiones_detalle || [];
+  const bruto = i.sesiones_detalle || [];
+  const s = agruparSesiones(bruto);
   const total = i.sesiones_activas;
 
   if (i.sesiones_detalle_error){
@@ -933,17 +1031,32 @@ function sesionesHTML(i){
   const cab = COLS_SESION.map(c =>
     '<th class="' + c.cls + " c-k-" + c.k + '">' + esc(c.t) + "</th>").join("");
   const cuerpo = s.map(f =>
-    "<tr>" + COLS_SESION.map(c =>
-      '<td class="' + c.cls + " c-k-" + c.k + '" title="' +
-      esc(String(f[c.k] == null ? "" : f[c.k])) + '">' +
-      celdaBloqueo(f, c) + "</td>"
-    ).join("") + "</tr>"
+    "<tr>" + COLS_SESION.map(c => {
+      if (c.k === "programa"){
+        const p = programaCorto(f.programa, f.job_nombre);
+        return '<td class="' + c.cls + ' c-k-programa" title="' + esc(p.tit) + '">' +
+               (p.job ? '<span class="jobn">' + esc(p.txt) + "</span>" : esc(p.txt)) +
+               (f.__hilos > 1 ? ' <span class="hilos">× ' + f.__hilos + " hilos</span>" : "") +
+               "</td>";
+      }
+      return '<td class="' + c.cls + " c-k-" + c.k + '" title="' +
+             esc(String(f[c.k] == null ? "" : f[c.k])) + '">' +
+             celdaBloqueo(f, c) + "</td>";
+    }).join("") + "</tr>"
   ).join("");
 
+  // `total` cuenta sesiones; `bruto` son filas por hilo. Decirlo, porque si no
+  // "30 de 30" con 12 filas en pantalla parece un error.
+  const paralelas = bruto.length - s.length;
   const pie = (total != null && total > s.length)
-    ? '<div class="nota nota-normal">Mostrando las ' + s.length + " de " +
-      fmt(total, 0) + ", ordenadas por tiempo de espera</div>"
-    : "";
+    ? '<div class="nota nota-normal">Mostrando ' + s.length + " de " +
+      fmt(total, 0) + " sesiones, ordenadas por tiempo de espera" +
+      (paralelas > 0 ? " · " + paralelas + " hilos paralelos agrupados" : "") +
+      "</div>"
+    : (paralelas > 0
+        ? '<div class="nota nota-normal">' + paralelas +
+          " hilos paralelos agrupados en su sesión</div>"
+        : "");
 
   // En presentacion no hay scroll: se ven como mucho PRES_FILAS filas de las
   // que hemos traido, y el aviso cuenta contra el total real de la instancia
@@ -974,6 +1087,31 @@ function contenidoBloqueos(i, soloTV){
   return '<div class="nota">' + fmt(i.sesiones_bloqueadas, 0) +
          " en el último minuto · ya resueltos, ahora mismo no hay ninguna " +
          "sesión bloqueando</div>";
+}
+
+// Jobs del Agent corriendo ahora. Solo existe si el SQL directo esta activo
+// para esa instancia: con DPA solo, `jobs_activos` no llega y no se pinta.
+function jobsHTML(i){
+  const j = i.jobs_activos;
+  if (!Array.isArray(j)) return "";
+  if (!j.length){
+    return '<div class="jobs vacio"><h3>Jobs en ejecución</h3>' +
+           '<div class="nota">Ninguno ahora mismo</div></div>';
+  }
+  const lentos = j.filter(x => x.lento).length;
+  const items = j.map(x => {
+    const n = String(x.nombre || "—");
+    return '<li class="' + (x.lento ? "lento" : "") + '" title="' +
+      esc(n + (x.media_s ? "\nmedia 7 días: " + fmtDur(x.media_s) : "")) +
+    '"><b>' + esc(n) + "</b>" +
+      '<span class="t">' + fmtDur(x.segundos) +
+      (x.lento ? " ⚠" : "") + "</span></li>";
+  }).join("");
+  return '<div class="jobs"><h3>Jobs en ejecución ' +
+         '<span class="pista">(' + j.length + ")</span>" +
+         (lentos ? ' · <span style="color:#fca5a5">' + lentos +
+                   " por encima de su media</span>" : "") +
+         "</h3><ul>" + items + "</ul></div>";
 }
 
 // Dentro de la tarjeta: solo se ve en la vista normal
@@ -1068,6 +1206,7 @@ function tarjeta(i){
           indicadoresHTML(i) +
           avisosHTML(i) +
           medidoresHTML(i) +
+          jobsHTML(i) +
         "</div>" +
         '<div class="zona zona-b">' + detalleHTML(i) + agHTML(i) + "</div>" +
         '<div class="zona zona-c">' + backupsHTML(i) + graficas +

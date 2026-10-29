@@ -771,6 +771,225 @@ def parsear_instancia(meta, tabs, cats, datos_series):
 # Monitor
 # ---------------------------------------------------------------------------
 
+# ------------------------------------------------------------------ SQL directo
+#
+# DPA no expone los jobs del Agent por ninguna via: su API REST devuelve 404 en
+# /jobs, /agent-jobs y /sqlagent, y SQL Server escribe en program_name el
+# job_id en binario, nunca el nombre. Para resolverlo hace falta leer msdb, y
+# eso solo se consigue conectando directamente a la instancia.
+#
+# Todo lo de este bloque es OPCIONAL y esta aislado a proposito: si pymssql no
+# esta instalado, si la configuracion no trae credenciales o si la conexion
+# falla, el panel sigue funcionando exactamente igual con los datos de DPA.
+# Es una herramienta de monitorizacion: nunca debe caerse por un extra.
+
+try:
+    import pymssql  # type: ignore
+    PYMSSQL = True
+except ImportError:
+    pymssql = None
+    PYMSSQL = False
+
+
+SQL_NOMBRES_JOB = """
+SELECT CONVERT(CHAR(36), job_id) AS id, name
+FROM   msdb.dbo.sysjobs
+"""
+
+# Jobs corriendo ahora mismo, con su duracion media de los ultimos 7 dias para
+# poder senalar los que se estan pasando de lo normal.
+#
+# OJO con el `%` del modulo de T-SQL: pymssql solo interpola parametros cuando
+# se le pasan, y aqui se ejecuta con `cur.execute(sql)` a secas. Por eso va un
+# `%` simple. Si algun dia se le pasan parametros habria que duplicarlo a `%%`.
+SQL_JOBS_ACTIVOS = """
+WITH med AS (
+    SELECT h.job_id,
+           AVG(h.run_duration/10000*3600 + (h.run_duration/100%100)*60
+               + h.run_duration%100) AS media_s
+    FROM   msdb.dbo.sysjobhistory h
+    WHERE  h.step_id = 0
+      AND  h.run_status = 1          -- solo ejecuciones correctas: las
+                                     -- abortadas bajarian la media
+      AND  h.run_date >= CONVERT(INT, CONVERT(VARCHAR(8),
+                                 DATEADD(DAY,-7,GETDATE()), 112))
+    GROUP BY h.job_id
+)
+SELECT TOP 40
+       j.name                                                     AS nombre,
+       DATEDIFF(SECOND, ja.start_execution_date, GETDATE())       AS segundos,
+       ISNULL(med.media_s, 0)                                     AS media_s
+FROM   msdb.dbo.sysjobactivity ja
+JOIN   msdb.dbo.sysjobs j ON j.job_id = ja.job_id
+LEFT JOIN med ON med.job_id = ja.job_id
+WHERE  ja.session_id = (SELECT MAX(session_id) FROM msdb.dbo.syssessions)
+  AND  ja.start_execution_date IS NOT NULL
+  AND  ja.stop_execution_date  IS NULL
+ORDER BY ja.start_execution_date
+"""
+
+
+class ClienteSQL(object):
+    """
+    Conexion de solo lectura a una instancia monitorizada. Abre y cierra en
+    cada consulta a proposito: son dos consultas ligeras cada medio minuto y
+    mantener conexiones vivas contra produccion no compensa el riesgo.
+    """
+
+    def __init__(self, host, puerto, usuario, password, timeout=8):
+        self.host = host
+        self.puerto = int(puerto or 1433)
+        self.usuario = usuario
+        self.password = password
+        self.timeout = int(timeout)
+
+    def consulta(self, sql):
+        conn = pymssql.connect(
+            server=self.host, port=self.puerto,
+            user=self.usuario, password=self.password,
+            database="msdb", timeout=self.timeout,
+            login_timeout=self.timeout, as_dict=True,
+            appname="dpa-dashboard")
+        try:
+            # as_dict ya va en connect(): las versiones antiguas de pymssql no
+            # aceptan kwargs en cursor()
+            cur = conn.cursor()
+            cur.execute(sql)
+            return cur.fetchall()
+        finally:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+class SQLDirecto(object):
+    """
+    Envoltorio sobre las conexiones directas de todas las instancias. Mantiene
+    las caches y se traga cualquier error: el consumidor nunca tiene que
+    comprobar nada.
+    """
+
+    def __init__(self, cfg):
+        raw = cfg.get("sql_directo") or {}
+        self.activo = bool(raw.get("activo")) and PYMSSQL
+        self.motivo = ""
+        if raw.get("activo") and not PYMSSQL:
+            self.motivo = ("pymssql no esta instalado: "
+                           "pip3 install pymssql")
+            log.warning("SQL directo pedido pero %s", self.motivo)
+
+        self.int_nombres = int(raw.get("intervalo_nombres_segundos", 900))
+        self.int_jobs = int(raw.get("intervalo_jobs_segundos", 30))
+        timeout = int(raw.get("timeout_segundos", 8))
+
+        self.clientes = {}
+        for nombre, c in (raw.get("instancias") or {}).items():
+            if not c.get("host") or not c.get("usuario"):
+                continue
+            self.clientes[nombre] = ClienteSQL(
+                c.get("host"), c.get("puerto", 1433),
+                c.get("usuario"), c.get("password"), timeout)
+
+        self._nombres = {}    # instancia -> (ts, {job_id_upper: nombre})
+        self._jobs = {}       # instancia -> (ts, [ {...} ])
+        self._fallo = {}      # instancia -> texto del ultimo error
+        self._lock = threading.Lock()
+
+    def habilitado(self, instancia):
+        return self.activo and instancia in self.clientes
+
+    def _cacheado(self, cache, instancia, intervalo, consulta, transforma):
+        ahora = time.time()
+        with self._lock:
+            hit = cache.get(instancia)
+            if hit and ahora - hit[0] < intervalo:
+                return hit[1]
+        try:
+            filas = self.clientes[instancia].consulta(consulta)
+            valor = transforma(filas)
+            with self._lock:
+                # la marca de tiempo se pone al terminar, no al empezar: la
+                # consulta puede tardar segundos y el dato nacería viejo
+                cache[instancia] = (time.time(), valor)
+                self._fallo.pop(instancia, None)
+            return valor
+        except Exception as e:  # noqa: BLE001
+            with self._lock:
+                self._fallo[instancia] = str(e)
+                hit = cache.get(instancia)
+            log.warning("SQL directo (%s): %s", instancia, e)
+            # se devuelve lo ultimo bueno si lo hay: mejor dato viejo que nada
+            return hit[1] if hit else None
+
+    def nombres_job(self, instancia):
+        """{job_id en mayusculas: nombre}. Los jobs cambian poco: cache larga."""
+        if not self.habilitado(instancia):
+            return {}
+        v = self._cacheado(
+            self._nombres, instancia, self.int_nombres, SQL_NOMBRES_JOB,
+            lambda filas: dict(
+                (str(f["id"]).upper().strip(), f["name"]) for f in filas))
+        return v or {}
+
+    def jobs_activos(self, instancia):
+        if not self.habilitado(instancia):
+            return None
+        def _t(filas):
+            out = []
+            for f in filas:
+                seg = int(f.get("segundos") or 0)
+                media = int(f.get("media_s") or 0)
+                out.append({
+                    "nombre": f.get("nombre"),
+                    "segundos": seg,
+                    "media_s": media or None,
+                    # "se esta pasando": mas del doble de su media y al menos
+                    # un minuto. Sin el minimo, un job de 2 s que tarda 5
+                    # saldria marcado y seria ruido.
+                    "lento": bool(media and seg > media * 2 and seg >= 60),
+                })
+            return out
+        return self._cacheado(self._jobs, instancia, self.int_jobs,
+                              SQL_JOBS_ACTIVOS, _t)
+
+    def error(self, instancia):
+        with self._lock:
+            return self._fallo.get(instancia)
+
+
+# SQL Server guarda el job_id como uniqueidentifier, pero en program_name lo
+# escribe en binario: los tres primeros grupos van en little-endian. Hay que
+# darles la vuelta byte a byte para recomponer el GUID.
+RE_JOBSTEP = re.compile(
+    r"SQLAgent\s*-\s*TSQL\s*JobStep\s*\(\s*Job\s+0x([0-9A-Fa-f]{32})", re.I)
+
+
+def guid_desde_hex(hex_txt):
+    h = hex_txt.upper()
+    b = [h[k * 2:k * 2 + 2] for k in range(16)]
+    return (b[3] + b[2] + b[1] + b[0] + "-" + b[5] + b[4] + "-" +
+            b[7] + b[6] + "-" + b[8] + b[9] + "-" + "".join(b[10:16]))
+
+
+def resolver_jobs(filas, nombres):
+    """
+    Anade `job_nombre` a las filas cuyo `programa` sea un paso de SQL Agent.
+    Si no hay mapa de nombres no hace nada: el panel ya sabe degradar.
+    """
+    if not filas or not nombres:
+        return filas
+    for f in filas:
+        m = RE_JOBSTEP.search(f.get("programa") or "")
+        if not m:
+            continue
+        guid = guid_desde_hex(m.group(1))
+        nom = nombres.get(guid)
+        if nom:
+            f["job_nombre"] = nom
+    return filas
+
+
 class Monitor(object):
 
     def __init__(self, cfg):
@@ -789,6 +1008,10 @@ class Monitor(object):
         self.intervalo_sesiones = int(cfg.get("intervalo_sesiones_segundos", 120))
         self._cache_sesiones = {}
         self._cache_ses_lock = threading.Lock()
+        # Opcional: conexion directa a las instancias para lo que DPA no da
+        # (nombres de job y jobs en ejecucion). Si no esta configurado o
+        # pymssql no esta, queda inerte y el panel funciona igual.
+        self.sql = SQLDirecto(cfg)
         # Nombre de la maquina donde corre el dashboard, para pintarlo en la
         # cabecera del modo presentacion. Se puede fijar a mano en dpa.json.
         try:
@@ -849,6 +1072,26 @@ class Monitor(object):
                     log.warning("%s: no pude leer las sesiones activas: %s",
                                 meta.get("name"), e)
                     inst["sesiones_detalle_error"] = str(e)
+
+            # Extras por conexion directa. Van en su propio try y despues de
+            # haber montado la instancia: si esto falla, la tarjeta ya esta
+            # completa con lo que da DPA y solo se queda sin los nombres.
+            nombre_inst = meta.get("name")
+            if self.sql.habilitado(nombre_inst):
+                try:
+                    nombres = self.sql.nombres_job(nombre_inst)
+                    if nombres:
+                        resolver_jobs(inst.get("sesiones_detalle"), nombres)
+                        resolver_jobs(inst.get("bloqueos"), nombres)
+                    jobs = self.sql.jobs_activos(nombre_inst)
+                    if jobs is not None:
+                        inst["jobs_activos"] = jobs
+                    err = self.sql.error(nombre_inst)
+                    if err:
+                        inst["sql_error"] = err
+                except Exception as e:  # noqa: BLE001
+                    log.warning("%s: SQL directo: %s", nombre_inst, e)
+                    inst["sql_error"] = str(e)
 
             destino[db_id] = inst
         except Exception as e:  # noqa: BLE001
