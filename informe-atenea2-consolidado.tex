@@ -1,0 +1,2645 @@
+% =====================================================================
+%  Informe tecnico consolidado - Instancia ATENEA2 (SRVPRORPDB01)
+%  Departamento de IT - Servicios Generales de la Plana
+%  Compilar con:  pdflatex informe-atenea2-consolidado.tex   (dos pasadas)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noquoting,es-nolists]{babel}
+\usepackage[a4paper,margin=2.3cm]{geometry}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+
+% ----------------------------- colores -------------------------------
+\definecolor{tinta}{HTML}{1A1A1A}
+\definecolor{acento}{HTML}{1F6FEB}
+\definecolor{gris}{HTML}{6B7280}
+\definecolor{grisclaro}{HTML}{F3F4F6}
+\definecolor{rojo}{HTML}{B91C1C}
+\definecolor{verde}{HTML}{15803D}
+\definecolor{ambar}{HTML}{B45309}
+\definecolor{comentario}{HTML}{6B7280}
+\definecolor{cadena}{HTML}{15803D}
+
+% --------------------------- cabecera/pie ----------------------------
+\pagestyle{fancy}
+\setlength{\headheight}{14pt}
+\setlength{\tabcolsep}{4pt}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[L]{\footnotesize\color{gris} ATENEA2 · SRVPRORPDB01 · Diagnóstico de bloqueos}
+\fancyhead[R]{\footnotesize\color{gris}\thepage}
+\fancyfoot[C]{\footnotesize\color{gris} SGP · Departamento de IT}
+
+% --------------------------- titulos ---------------------------------
+\titleformat{\section}{\Large\bfseries\color{tinta}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\color{tinta}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{gris}}{}{0em}{}
+
+% --------------------------- listings --------------------------------
+\lstdefinestyle{sql}{
+  language=SQL, basicstyle=\ttfamily\scriptsize, keywordstyle=\color{acento}\bfseries,
+  commentstyle=\color{comentario}\itshape, stringstyle=\color{cadena},
+  numbers=left, numberstyle=\tiny\color{gris}, numbersep=8pt,
+  backgroundcolor=\color{grisclaro}, frame=leftline, rulecolor=\color{gris},
+  framexleftmargin=6pt, xleftmargin=14pt, breaklines=true,
+  showstringspaces=false, columns=fullflexible, morekeywords={APPLY,CROSS,OVER,PARTITION,WITH,STUFF,DATEADD,DATEDIFF,CAST,NULLIF,ISNULL,TOP}
+}
+\lstdefinestyle{salida}{
+  basicstyle=\ttfamily\scriptsize\color{tinta}, backgroundcolor=\color{grisclaro},
+  frame=leftline, rulecolor=\color{gris}, framexleftmargin=6pt,
+  xleftmargin=10pt, breaklines=true, showstringspaces=false, columns=fullflexible
+}
+
+\newcommand{\cod}[1]{\texttt{\small #1}}
+\newcommand{\critico}[1]{\textcolor{rojo}{\textbf{#1}}}
+\newcommand{\bien}[1]{\textcolor{verde}{\textbf{#1}}}
+\newcommand{\aviso}[1]{\textcolor{ambar}{\textbf{#1}}}
+\newcommand{\sombra}{\cellcolor{grisclaro}}
+
+% =====================================================================
+\begin{document}
+
+% --------------------------- PORTADA ---------------------------------
+\begin{titlepage}
+\centering
+\vspace*{2.5cm}
+
+{\color{gris}\large SERVICIOS GENERALES DE LA PLANA · DEPARTAMENTO DE IT}
+
+\vspace{1.4cm}
+{\Huge\bfseries\color{tinta} Diagnóstico de bloqueos\\[0.35cm] en la instancia ATENEA2}
+
+\vspace{0.8cm}
+{\large\color{gris} SRVPRORPDB01 · SQL Server 2022 · 16 vCPU · 128\,GB}
+
+\vspace{2.2cm}
+\begin{minipage}{0.82\textwidth}
+\color{tinta}\normalsize
+Informe técnico consolidado. Reúne todas las mediciones realizadas sobre la
+instancia entre el 22 y el 29 de octubre de 2026, los hallazgos confirmados,
+las hipótesis descartadas y el plan de corrección por fases.
+
+\vspace{0.5cm}
+Incluye además el análisis de la base de datos \cod{Cenusa}, que apareció
+durante la investigación y resultó concentrar los costes unitarios más altos
+de toda la instancia.
+\end{minipage}
+
+\vfill
+\begin{minipage}{0.82\textwidth}
+\color{gris}\small
+\begin{tabular}{@{}ll@{}}
+\textbf{Instancia}   & SRVPRORPDB01 (ATENEA2), SQL Server 2022, compat. 160 \\
+\textbf{Fuentes}     & SolarWinds DPA 2022.4 · consultas directas · vCenter \\
+\textbf{Cuenta}      & \cod{dpaMONITOR} (solo lectura) \\
+\textbf{Ventana}     & 22--29 de octubre de 2026 \\
+\textbf{Versión}     & 4.0 — consolidada \\
+\textbf{Fecha}       & 29 de octubre de 2026 \\
+\end{tabular}
+\end{minipage}
+
+\vspace{1cm}
+\end{titlepage}
+
+% --------------------- HISTORIAL DE REVISIONES -----------------------
+\section*{Historial de revisiones}
+\addcontentsline{toc}{section}{Historial de revisiones}
+
+La tesis central de este informe cambió tres veces durante la investigación.
+Queda registrado porque afecta a cómo deben leerse las recomendaciones.
+
+\begin{longtable}{p{1.1cm}p{2.1cm}p{12.4cm}}
+\toprule
+\textbf{Ver.} & \textbf{Fecha} & \textbf{Cambio} \\
+\midrule
+\endhead
+1.0 & 29/10/2026 & Primera versión. Tesis: \emph{paralelismo mal
+  configurado} (se suponía MAXDOP 0 y \emph{cost threshold} 5). \\
+2.0 & 29/10/2026 & \critico{Tesis 1.0 refutada} por medición directa: MAXDOP
+  estaba en 8 y el umbral en 100. Nueva tesis: paralelismo \emph{innecesario}
+  por estimaciones de cardinalidad erróneas. Se añade el análisis del SQL
+  Agent. \\
+3.0 & 29/10/2026 & Se registra el vCenter en DPA y se descarta la contención
+  de hipervisor. Se añaden latencia por fichero e índices ausentes. \\
+4.0 & 29/10/2026 & Consolidación. Se demuestra la tesis 2.0 con evidencia de
+  planes. Se añaden escalado de bloqueos, grupo de disponibilidad (descartado)
+  y la base de datos \cod{Cenusa}. \critico{Se corrige} la lectura de
+  \cod{HADR\_NOTIFICATION\_DEQUEUE} y \critico{se descarta} la hipótesis de
+  \cod{IndexOptimize} como causa del bloqueo de esquema. \\
+\bottomrule
+\end{longtable}
+
+\newpage
+\tableofcontents
+\newpage
+
+% =====================================================================
+\section{Resumen ejecutivo}
+
+\subsection*{Qué se investigó}
+
+La instancia ATENEA2 presenta sesiones bloqueadas de forma \textbf{permanente
+durante toda la jornada laboral}. En los siete días analizados, el
+\critico{88\,\%} de las muestras registran bloqueos, con una media de 4,9
+sesiones bloqueadas y un pico de 9,0 a las 08:00. Las otras cuatro instancias
+monitorizadas del parque se mueven entre el 0 y el 2\,\%.
+
+\subsection*{Conclusión en cuatro frases}
+
+\begin{enumerate}[leftmargin=1.4em]\itemsep3pt
+  \item \textbf{La configuración de SQL Server es correcta} y la plataforma
+        también: paralelismo, TempDB, disco e hipervisor se midieron y se
+        descartaron uno por uno.
+  \item \textbf{El problema es de estimación, no de configuración}: el
+        optimizador trabaja con estadísticas permanentemente obsoletas, elige
+        planes paralelos que no hacen falta y concede memoria que no se usa.
+  \item \textbf{La concurrencia lo amplifica}: 140 planificaciones de SQL
+        Agent sub-diarias, ninguna base de datos con versionado de filas, y
+        575 disparadores en \cod{Cenusa} que alargan cada transacción desde
+        dentro.
+  \item \textbf{No hay una sola causa}, y por eso no hay un solo arreglo: las
+        catorce acciones van en tres fases, de lo reversible y gratuito a lo
+        que exige ventana y desarrollo.
+\end{enumerate}
+
+\subsection*{Los seis hallazgos confirmados}
+
+\begin{longtable}{p{0.4cm}p{6.6cm}p{8.6cm}}
+\toprule
+& \textbf{Hallazgo} & \textbf{Evidencia} \\
+\midrule
+\endhead
+1 & Estadísticas permanentemente obsoletas
+  & \cod{entEFECTO\_FacturasCobradas365}: 31,5\,M de modificaciones sobre
+    1,18\,M de filas en 9\,h (26$\times$ su tamaño), muestreada al 11,8\,\% \\
+2 & Paralelismo innecesario, demostrado
+  & 6 variantes del mismo \cod{INSERT}: 31.000\,s de CPU para devolver
+    \textbf{0 filas}. Una consulta de \cod{OMS}: 506\,MB concedidos para
+    devolver \textbf{1 fila} \\
+3 & Escalado y espera de bloqueos concentrados
+  & \cod{entEMPRESA}: \textbf{38 horas} de espera acumulada en 27 días.
+    \cod{entORDENCARGA}: 22 horas. Tres jobs reescriben \cod{entEMPRESA}
+    cada 30 minutos en horario laboral \\
+4 & Sin versionado de filas
+  & RCSI desactivado en las 8 bases revisadas: los lectores bloquean a los
+    escritores \\
+5 & SQL Agent saturado y desbordando la noche
+  & 140 planificaciones sub-diarias; 2 jobs al 118\,\% y 96\,\% de ocupación;
+    \cod{TAREAS NOCTURNAS STN} puede acabar a las 09:14 \\
+6 & \cod{Cenusa}: 575 disparadores
+  & 9 sobre \cod{entEMPRESA}. \cod{AUDITORIA2}: 29,7\,M de filas con 89\,M de
+    modificaciones, muestreada al 1\,\%. Un procedimiento consume
+    \textbf{1,1\,GB} de memoria y aprovecha el 17\,\% \\
+\bottomrule
+\end{longtable}
+
+\subsection*{Los trece descartes}
+
+Medidos y eliminados: configuración de paralelismo (a nivel de instancia y de
+base de datos), estimador de cardinalidad, dimensionamiento de TempDB,
+almacenamiento (desde el invitado y desde el host), proceso ajeno consumiendo
+CPU, agotamiento del grupo de hilos, contención de CPU del hipervisor,
+presión de memoria del hipervisor, confirmación síncrona del grupo de
+disponibilidad, índices ausentes en \cod{Cenusa} y \cod{IndexOptimize} como
+causa del bloqueo de esquema. \textbf{Ninguno se descartó por criterio: todos
+por medición directa.} El detalle, con la consulta y el resultado de cada
+uno, en la sección \ref{sec:descartes}.
+
+\subsection*{Qué contiene este informe}
+
+\begin{longtable}{p{1.1cm}p{4.6cm}p{9.9cm}}
+\toprule
+\textbf{Sec.} & \textbf{Título} & \textbf{Contenido} \\
+\midrule
+\endhead
+2 & Alcance y método & De dónde sale cada dato, con qué ventana temporal, y
+    las cuatro correcciones sobre el propio análisis \\
+3 & El síntoma & Qué se observó: capturas del incidente, composición de las
+    sesiones, recurrencia de 7 días y contraste con el resto del parque \\
+4 & Diagnóstico & El mecanismo completo: diagrama causal, esperas, la prueba
+    del paralelismo, estadísticas, escalado de bloqueos, RCSI, SQL Agent,
+    memoria, CPU, hipervisor y registros de transacciones \\
+5 & \cod{Cenusa} & Los 575 disparadores, \cod{AUDITORIA2}, el procedimiento
+    de 1,1\,GB y qué está bien en esa base \\
+6 & Descartes & Tabla consolidada: hipótesis, qué se midió, resultado \\
+7 & Plan de acción & Doce acciones en tres fases, cada una con su métrica de
+    verificación. Y lo que no se recomienda hacer \\
+8 & Consultas & Todo el SQL utilizado, reproducible tal cual \\
+9 & Evidencia & Salida literal de cada consulta, sin editar \\
+10 & Anexo & Las 80 planificaciones de menos de una hora \\
+11 & Glosario & Términos técnicos empleados \\
+\bottomrule
+\end{longtable}
+
+\vspace{0.4cm}
+\noindent\fbox{\parbox{0.975\textwidth}{\textbf{Lo que yo haría el lunes:}
+activar \cod{AUTO\_UPDATE\_STATISTICS\_ASYNC} en \cod{Grupo} y programar
+estadísticas con \cod{FULLSCAN} tres o cuatro veces al día sobre
+\cod{entEFECTO\_FacturasCobradas365} y
+\cod{STN\_ERP\_ANALISIS\_VENTAS\_PEDIDOS}. Es un comando y un job, sin
+ventana de parada, reversible en segundos, y ataca el mecanismo que genera
+todo lo demás. \textbf{Un cambio cada 48 horas}, nunca varios a la vez.}}
+
+% =====================================================================
+\newpage
+\section{Alcance y método}
+
+\subsection{De dónde sale cada dato}
+
+Tres fuentes, con capacidades y ventanas muy distintas. Distinguirlas importa
+porque no todas las cifras de este informe tienen la misma solidez.
+
+\begin{longtable}{p{0.4cm}p{4.3cm}p{5.1cm}p{5.4cm}}
+\toprule
+& \textbf{Fuente} & \textbf{Qué aporta} & \textbf{Ventana y granularidad} \\
+\midrule
+\endhead
+1 & Panel propio en
+    \cod{http://10.50.69.121:9000}, que lee de SolarWinds DPA 2022.4
+  & Histórico de sesiones activas y bloqueadas, esperas, CPU, memoria,
+    TempDB, backups
+  & 22--29/10. Diezmado a 720 puntos por serie: 1 muestra/hora en la ventana
+    de 7 días \\
+2 & Consultas directas a SRVPRORPDB01 por la herramienta de consultas de DPA,
+    con \cod{dpaMONITOR}
+  & Vistas de gestión dinámica: configuración, esperas, bloqueos,
+    estadísticas, índices, jobs, planes
+  & Acumulado desde el arranque (02/10), 27 días. Solo lectura \\
+3 & Pestaña \emph{Virtualization} de DPA, alimentada por el vCenter
+    \cod{vcsa.central.local}
+  & \emph{Ready time}, \emph{co-stop}, \emph{ballooning}, intercambio del
+    host, latencia por dispositivo
+  & \critico{Solo $\approx$70 minutos}: el vCenter se registró el mismo día
+    29/10 \\
+\bottomrule
+\end{longtable}
+
+\subsection{La instancia}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Característica} & \textbf{Valor} \\
+\midrule
+Servidor              & SRVPRORPDB01 (ATENEA2), VM sobre ESXi \cod{10.150.0.8} \\
+Versión               & SQL Server 2022, nivel de compatibilidad 160 \\
+Núcleos               & 16 vCPU en 2 nodos NUMA, 16 \emph{schedulers} \\
+Memoria               & 131.071\,MB físicos; \cod{max server memory} 96.896\,MB \\
+Arranque              & 02/10/2026 14:25 — 27 días de actividad acumulada \\
+Alta disponibilidad   & \cod{AG-ATENEA2}, réplica secundaria SRVPRORPDB02 \\
+Bases relevantes      & \cod{Grupo}, \cod{Cenusa}, \cod{OMS}, \cod{IFR},
+                        \cod{ContaSTN}, \cod{D365Eventos} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Limitaciones conocidas}
+
+\paragraph{El histórico del panel se diezma.} Cada serie se limita a 720
+puntos, así que la ventana de siete días se reduce a una muestra por hora y
+la de 24 horas a una cada diez minutos. \textbf{Los máximos citados son cotas
+inferiores}: los picos entre muestras no se ven.
+
+\paragraph{El contador de bloqueos y su lista no son simultáneos.} El
+contador procede de una métrica que DPA muestrea cada minuto; la lista de
+sesiones es una foto en vivo tomada en otro instante. Que el contador diga 23
+y la lista muestre 3 no es un error.
+
+\paragraph{Las vistas acumuladas no distinguen la hora.}
+\cod{dm\_os\_wait\_stats}, \cod{dm\_io\_virtual\_file\_stats},
+\cod{dm\_db\_index\_operational\_stats} y \cod{dm\_db\_missing\_index\_*}
+suman los 27 días desde el arranque sin separar las horas punta de la
+madrugada. Sirven para saber \emph{qué} domina, no \emph{cuándo} ocurre. La
+datación de este informe viene del panel, no de ellas.
+
+\paragraph{Los índices sugeridos son heurísticos.} Las cifras de impacto de
+\cod{dm\_db\_missing\_index\_group\_stats} las estima el optimizador sobre
+planes individuales, ignorando los índices existentes y el coste de
+mantenimiento en escritura. Indican dónde mirar; no son un guion para
+aplicar.
+
+\paragraph{El detalle de sesiones se refresca cada dos minutos} y se limita a
+60 filas ordenadas por tiempo de espera. Los repartos por programa, host y
+base de datos salen de esa muestra, no del censo completo.
+
+\paragraph{El hipervisor tiene 70 minutos de histórico.} Las magnitudes son
+inequívocas, pero \textbf{el pico de las 08:00 no se ha observado todavía a
+ese nivel}. Procede repetir la comprobación con 7 días completos.
+
+\paragraph{Query Store está desactivado en \cod{Grupo}} (solo activo en
+\cod{D365Eventos}). Sin él no hay histórico de planes, que es lo que
+permitiría seguir la evolución de las estimaciones en el tiempo en lugar de
+verlas en un corte.
+
+\paragraph{Queda sin identificar el origen del bloqueo \cod{Sch-M} de
+392\,s.} Ver la sección \ref{sec:schm}.
+
+\paragraph{\cod{Cenusa} no se ha agotado.} Se analizaron sus disparadores,
+estadísticas, índices ausentes y esperas de bloqueo, pero \textbf{no el
+contenido funcional de los 575 disparadores}, que es trabajo de desarrollo.
+
+\subsection{Cuatro correcciones sobre el propio análisis}
+\label{sec:correcciones}
+
+Durante la investigación se descartaron cuatro afirmaciones propias. Se
+registran porque definen cuánto crédito merece el razonamiento frente a la
+medición.
+
+\begin{longtable}{p{0.4cm}p{6.4cm}p{8.8cm}}
+\toprule
+& \textbf{Se afirmó} & \textbf{Y resultó} \\
+\midrule
+\endhead
+1 & El paralelismo estaba mal configurado: MAXDOP 0 y \emph{cost threshold}
+    en el valor por defecto de 5
+  & \critico{Falso.} MAXDOP 8 y umbral 100, ambos correctos. También se
+    comprobó el ámbito de base de datos, sin sobrescritura. La tesis se
+    sustituyó por «paralelismo innecesario», con un remedio completamente
+    distinto: estadísticas, no configuración \\
+2 & El log de TempDB estaba al 0\,\% libre, según el panel
+  & \critico{Falso.} Medido directamente, al 93\,\% libre. Falsa alarma de esa
+    métrica de DPA \\
+3 & \cod{HADR\_NOTIFICATION\_DEQUEUE} (2,8\,\% de las esperas) indicaba carga
+    del grupo de disponibilidad
+  & \critico{Falso.} Es una espera \emph{inactiva} de hilos de fondo. La
+    sospecha derivada —AG en confirmación síncrona— se comprobó y también
+    resultó falsa: es \cod{ASYNCHRONOUS\_COMMIT} \\
+4 & El bloqueo \cod{Sch-M} de 392\,s lo causaba \cod{IndexOptimize}
+  & \critico{Falso.} Ese día el job terminó a las 03:26:58, siete horas antes
+    del incidente \\
+\bottomrule
+\end{longtable}
+
+\noindent Cada acción de la sección \ref{sec:plan} lleva por ello su propia
+consulta de verificación. \textbf{Las recomendaciones valen lo que valen las
+mediciones que las sostienen}, no la plausibilidad del razonamiento.
+
+% =====================================================================
+\newpage
+\section{El síntoma}
+
+\subsection{Qué se observó}
+
+Dos capturas del mismo día, separadas por minutos, con el panel como fuente.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Medida} & \textbf{Captura 1} & \textbf{Captura 2} \\
+\midrule
+Sesiones activas              & 202 & 187 \\
+Sesiones bloqueadas (contador)& \critico{23} & \critico{18} \\
+Espera acumulada en 1 hora    & \critico{1.527\,s} & --- \\
+Cadena de bloqueo más larga   & 3 niveles & 2 niveles \\
+Espera máxima de una sesión   & \critico{392\,s} & 214\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Una sesión esperó \textbf{392 segundos} —seis minutos y medio— por un bloqueo
+de esquema. Se observaron esperas de 200 segundos en clientes
+\cod{.Net SqlClient} desde puestos de usuario. Eso no se percibe como
+lentitud: se percibe como que la aplicación se ha colgado, y el usuario
+cierra y vuelve a entrar, añadiendo otra sesión a la cola.
+
+\subsection{Composición de las sesiones}
+
+De las 60 sesiones examinadas en detalle (la muestra que devuelve el panel,
+ordenada por tiempo de espera):
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Esperando por} & \textbf{Sesiones} & \textbf{Interpretación} \\
+\midrule
+Paralelismo (\cod{CX*}, \cod{EXECSYNC}) & \critico{45} & reparto de trabajo entre hilos \\
+Bloqueo de objetos (\cod{LCK\_M\_*})    & 7 & espera real por bloqueo \\
+CPU (\cod{SOS\_SCHEDULER\_YIELD})       & 5 & turno de procesador \\
+Otros                                   & 3 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{El dato clave está en el reparto.} Solo 7 de 60 esperaban por un
+bloqueo; 45 esperaban por paralelismo. Y las sesiones que bloqueaban a las
+demás no esperaban a nadie: esperaban turno de CPU. Es decir, \textbf{el
+bloqueo no es el origen, es la consecuencia} de que los bloqueadores tarden
+demasiado en soltar.
+
+Se detectaron además \textbf{10 sesiones dormidas} (\cod{sleeping}) con
+transacción abierta, reteniendo bloqueos sin ejecutar nada: indicio de
+transacciones que la aplicación abre y no cierra con diligencia.
+
+\subsection{Qué tan recurrente es}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=15.2cm, height=5.6cm,
+  xlabel={\footnotesize Hora del día}, ylabel={\footnotesize Sesiones bloqueadas},
+  xmin=0, xmax=23, ymin=0, ymax=10,
+  xtick={0,2,4,6,8,10,12,14,16,18,20,22},
+  ytick={0,2,4,6,8,10},
+  grid=major, grid style={gris!25},
+  tick label style={font=\scriptsize\color{gris}},
+  label style={font=\scriptsize\color{gris}},
+  axis lines=left, every axis plot/.append style={thick},
+  legend style={font=\scriptsize, draw=none, fill=none, at={(0.98,0.97)}, anchor=north east}
+]
+\addplot[color=acento, mark=*, mark size=1.3pt] coordinates {
+ (0,2.1)(1,2.4)(2,3.1)(3,2.8)(4,3.4)(5,4.2)(6,5.8)(7,7.4)(8,9.0)(9,8.1)
+ (10,6.9)(11,6.2)(12,5.4)(13,4.1)(14,4.6)(15,5.9)(16,6.1)(17,5.2)(18,4.4)
+ (19,3.6)(20,3.1)(21,2.7)(22,2.3)(23,2.0)};
+\addlegendentry{media por hora (7 días)}
+\addplot[color=rojo, dashed, no marks] coordinates {(0,1)(23,1)};
+\addlegendentry{objetivo: menos de 1}
+\node[font=\scriptsize\color{rojo}, anchor=south] at (axis cs:8,9.0) {9,0};
+\end{axis}
+\end{tikzpicture}
+\caption{Media de sesiones bloqueadas por hora, del 22 al 29 de octubre.
+El pico de las 08:00 coincide con la entrada de los usuarios y con el final
+de los procesos nocturnos que se desbordan.}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Indicador (7 días)} & \textbf{Valor} \\
+\midrule
+Muestras con al menos una sesión bloqueada & \critico{88\,\%} \\
+Media de sesiones bloqueadas               & 4,9 \\
+Pico horario (08:00)                       & \critico{9,0} \\
+\emph{Page life expectancy} medio          & \critico{124\,s} \\
+\emph{Page life expectancy} instantáneo    & \critico{28\,s} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{No es un incidente puntual.} El 88\,\% de las muestras registran
+bloqueo: es el estado normal de esta instancia durante la jornada.
+
+\subsection{Contraste con el resto del parque}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrr}
+\toprule
+\textbf{Instancia} & \textbf{Versión} & \textbf{\% muestras con bloqueo} &
+\textbf{Media} \\
+\midrule
+\critico{ATENEA2} (SRVPRORPDB01) & SQL 2022 & \critico{88\,\%} & \critico{4,9} \\
+SCALEPROD (SRVPROSCDB1)          & SQL 2022 & 2\,\% & 0,1 \\
+SRVPBI                           & SQL 2022 & 1\,\% & 0,0 \\
+PROMETEO                         & SQL 2014 & 0\,\% & 0,0 \\
+AQUILES                          & SQL 2012 & 0\,\% & 0,0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las cuatro restantes son irrelevantes estadísticamente. \textbf{El problema
+es específico de ATENEA2}, no una característica del parque ni de la versión
+de SQL Server: SCALEPROD corre la misma versión sobre hardware comparable y
+está al 2\,\%.
+
+% =====================================================================
+\newpage
+\section{Diagnóstico: el mecanismo}
+
+\subsection{El cuadro completo}
+
+No hay una causa única. Hay \textbf{tres condiciones de fondo} que se
+combinan, y un ciclo que una vez arrancado se sostiene solo.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  caja/.style={draw=gray!60, rounded corners=4pt, minimum width=4.4cm,
+               minimum height=1.35cm, align=center, font=\footnotesize},
+  raiz/.style={caja, draw=rojo!70, line width=1pt, fill=rojo!6,
+               minimum height=1.6cm},
+  destacada/.style={caja, draw=acento, line width=1.2pt, fill=acento!8},
+  flecha/.style={-latex, draw=gray!70, line width=0.9pt},
+  fina/.style={-latex, draw=rojo!50, line width=0.8pt}
+]
+\node[raiz] (est)  at (-5.2, 4.8) {\textbf{Estadísticas obsoletas}\\
+    \scriptsize\color{gris} 31,5\,M de cambios sobre\\[-1pt]
+    \scriptsize\color{gris} 1,18\,M de filas};
+\node[raiz] (job)  at ( 0.0, 4.8) {\textbf{140 jobs sub-diarios}\\
+    \scriptsize\color{gris} dos al 118\,\% y al 96\,\%\\[-1pt]
+    \scriptsize\color{gris} de ocupación};
+\node[raiz] (rcsi) at ( 5.2, 4.8) {\textbf{Sin versionado de filas}\\
+    \scriptsize\color{gris} RCSI desactivado\\[-1pt]
+    \scriptsize\color{gris} en las ocho bases};
+
+\node[destacada] (plan) at (-3.6, 2.2) {\textbf{Estimaciones erróneas}\\
+    \scriptsize\color{gris} planes paralelos innecesarios};
+\node[caja]      (escr) at ( 3.6, 2.2) {\textbf{Escritura constante}\\
+    \scriptsize\color{gris} y lectores que bloquean};
+
+\node[destacada] (cpu)  at (-3.6, -0.3) {\textbf{CPU saturada}\\
+    \scriptsize\color{gris} 72--83\,\%; 58,7\,\% de esperas\\[-1pt]
+    \scriptsize\color{gris} son de reparto paralelo};
+\node[caja]      (tran) at ( 3.6, -0.3) {\textbf{Transacciones largas}\\
+    \scriptsize\color{gris} retienen bloqueos más tiempo};
+
+\node[caja]      (bloq) at ( 0.0, -2.8) {\textbf{Bloqueo permanente}\\
+    \scriptsize\color{gris} 88\,\% de las muestras, pico de 9 a las 8\,h};
+
+\draw[fina]   (est)  -- (plan);
+\draw[fina]   (job)  -- (escr);
+\draw[fina]   (rcsi) -- (escr);
+\draw[flecha] (plan) -- (cpu);
+\draw[flecha] (escr) -- (tran);
+\draw[flecha] (cpu)  -- (tran);
+\draw[flecha] (cpu)  -- (bloq);
+\draw[flecha] (tran) -- (bloq);
+\draw[flecha] (bloq) to[out=200,in=250,looseness=1.6]
+      node[below left,font=\scriptsize,color=gris,pos=0.45]{se realimenta} (cpu);
+\end{tikzpicture}
+\caption{Tres condiciones de fondo (en rojo) alimentan un ciclo que se
+sostiene a sí mismo. El hipervisor, el disco y la configuración de
+paralelismo quedaron descartados por medición.}
+\end{figure}
+
+La realimentación explica por qué el cuadro no se corrige solo: las sesiones
+que esperan turno de CPU \textbf{retienen sus bloqueos mientras esperan}, y
+los usuarios que ven la aplicación colgada cierran y vuelven a entrar,
+añadiendo sesiones a la misma cola.
+
+\subsection{Las esperas}
+
+Acumulado de los 27 días que lleva encendida la instancia:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrl}
+\toprule
+\textbf{Tipo de espera} & \textbf{Segundos} & \textbf{\% total} &
+\textbf{Qué indica} \\
+\midrule
+CXCONSUMER                  & 45.504.691 & 27,6\,\% & paralelismo \\
+CXSYNC\_PORT                & 31.022.696 & 18,8\,\% & paralelismo \\
+CXPACKET                    & 20.425.851 & 12,4\,\% & paralelismo \\
+SOS\_SCHEDULER\_YIELD       & 12.906.011 &  7,8\,\% & \critico{falta de CPU} \\
+LATCH\_EX                   &  9.896.832 &  6,0\,\% & contención interna \\
+\sombra HADR\_NOTIFICATION\_DEQUEUE & \sombra 4.645.761 & \sombra 2,8\,\% &
+  \sombra \emph{inactiva --- no computa} \\
+HTDELETE                    & --- &  2,2\,\% & uniones hash en paralelo \\
+OLEDB                       & --- &  2,1\,\% & consultas distribuidas \\
+PAGEIOLATCH\_SH             & --- &  2,1\,\% & \critico{lecturas a disco por falta de memoria} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Corrección (ver \ref{sec:correcciones}).}
+\cod{HADR\_NOTIFICATION\_DEQUEUE}, como \cod{HADR\_WORK\_QUEUE},
+\cod{HADR\_TIMER\_TASK} y \cod{HADR\_FILESTREAM\_IOMGR\_IOCOMPLETION},
+corresponde a hilos de fondo ociosos esperando trabajo. Aparece con cifras
+enormes en cualquier instancia con grupo de disponibilidad y debe excluirse,
+igual que \cod{SLEEP\_*} o \cod{XE\_TIMER\_EVENT}. En una versión anterior se
+interpretó como carga del AG: era un error.
+
+\paragraph{El paralelismo suma el \critico{58,7\,\%} de todo el tiempo de
+espera}, pese a estar bien configurado. Durante buena parte de la
+investigación se asumió que la causa era «demasiado trabajo pesado a la vez
+para 16 núcleos». La sección siguiente demuestra que no: \textbf{se reparte
+trabajo que no hacía falta repartir}.
+
+\subsection{La prueba: planes paralelos que no devuelven nada}
+\label{sec:prueba}
+
+La huella de una estimación inflada es doble: el optimizador \textbf{concede
+memoria} para las filas que cree que va a manejar, y \textbf{reparte la
+consulta entre varios núcleos} por el mismo motivo. Si después devuelve cero
+filas, la estimación era errónea. Consultando
+\cod{sys.dm\_exec\_query\_stats}:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Sentencia (BD \cod{Grupo})} & \textbf{Ejec.} & \textbf{CPU} &
+\textbf{Duración} & \textbf{Núcleos} & \textbf{Filas} \\
+\midrule
+\cod{INSERT StnERPArticuloLoteLinea} ($\times$6) & 2.147 & \critico{31.000\,s} &
+  12.166\,s & 2,5 & \critico{0} \\
+\cod{UPDATE stnERPORDENPREPARACION} & 1.122 & 1.340\,s & 376\,s &
+  \critico{3,6} & \critico{0} \\
+\cod{UPDATE stnERPORDENPREPARACION} (2) & 1.122 & 919\,s & 328\,s & 2,8 &
+  \critico{0} \\
+\cod{DELETE D365Eventos..STNAppSuite\ldots} & 591 & 1.993\,s & 898\,s & 2,2 & 3 \\
+\cod{DELETE D365Eventos..STNAppSuite\ldots} (2) & 597 & 1.255\,s & 597\,s & 2,1 & 3 \\
+\cod{DELETE ..InventTransOriginBiEntities} & 595 & 1.181\,s & 627\,s & 1,9 & 2 \\
+\cod{SELECT OMS..InventTransOrigin\ldots} & 164 & 581\,s & 291\,s & 2,0 &
+  \critico{1} \\
+\bottomrule
+\end{tabular}
+\caption{«Núcleos» = \cod{total\_worker\_time / total\_elapsed\_time}: por
+encima de 1 indica plan paralelo. «Filas» es la media devuelta por ejecución.}
+\end{table}
+
+\paragraph{Ocho horas y media de CPU para no devolver ninguna fila.} Las seis
+variantes de \cod{INSERT INTO StnERPArticuloLoteLinea} suman \textbf{31.000
+segundos de CPU} en apenas 2.147 ejecuciones: 14 segundos de CPU cada una,
+repartidos entre 2,5 núcleos, con 71\,MB de memoria concedida y cero filas de
+resultado. Es el mayor consumidor paralelo de la instancia.
+
+\paragraph{506\,MB de memoria para devolver una fila.}
+\cod{SELECT a.SourceKey FROM OMS..InventTransOriginBiEntities} recibe
+\textbf{506\,MB de concesión por ejecución} y devuelve \textbf{una fila}. No
+hay forma más clara de enseñar una estimación de cardinalidad equivocada. Esa
+concesión se resta del \emph{buffer pool} mientras dura la consulta, lo que
+conecta directamente con el \emph{page life expectancy} de 28 segundos.
+
+\paragraph{Seis copias de la misma sentencia.} Que el mismo \cod{INSERT}
+aparezca seis veces con estadísticas propias indica que \textbf{no está
+parametrizado}: cada variante literal genera su propio plan, ocupa su propia
+entrada en la caché y se optimiza por separado.
+
+\paragraph{Conclusión.} El \emph{cost threshold} está en 100 y es correcto,
+pero es un umbral sobre un coste \emph{estimado}. Si la estimación de filas
+está inflada, se cruza igual. \textbf{El optimizador no está mal configurado:
+está eligiendo paralelismo para consultas que no lo necesitan.}
+
+\subsection{Las estadísticas están permanentemente obsoletas}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Tabla (BD \cod{Grupo})} & \textbf{Filas} & \textbf{Modificaciones} &
+\textbf{Churn} & \textbf{Muestra} \\
+\midrule
+entEFECTO\_FacturasCobradas365 & 1.184.877 & \critico{31.476.588} &
+  \critico{26,6$\times$} & \critico{11,8\,\%} \\
+STN\_ERP\_ANALISIS\_VENTAS\_PEDIDOS & 6.460.673 & \critico{12.940.889} &
+  \critico{2,0$\times$} & \critico{1,4\,\%} \\
+\bottomrule
+\end{tabular}
+\caption{Estadísticas actualizadas esa misma madrugada, a las 02:41 y 02:48.}
+\end{table}
+
+Las estadísticas se actualizaron \emph{hoy}. No son antiguas por fecha
+(\cod{dias} = 0). El problema es el volumen de cambio acumulado desde
+entonces: en menos de nueve horas,
+\cod{entEFECTO\_FacturasCobradas365} registró \textbf{31,5 millones de
+modificaciones sobre una tabla de 1,18 millones de filas}. Veintiséis veces
+su propio tamaño. Es una tabla de paso que se vacía y recarga continuamente,
+lo que concuerda con los jobs \cod{D365 CARGAR FACTURAS COBRADAS} (cada hora),
+\cod{ACTUALIZAR\_FECHACOBRO\_EFECTOS\_DESDE\_CONCILIADOS} (cada 30 minutos) y
+\cod{Limpiar Fechas Efectos} (cada hora).
+
+El umbral de actualización automática en nivel 160 es aproximadamente
+$\sqrt{1000 \times filas}$, unas 34.400 modificaciones para esta tabla. Se
+cruza en minutos. En la práctica, \textbf{el optimizador nunca trabaja con
+estadísticas representativas de esa tabla}.
+
+Y el muestreo agrava el efecto: 11,8\,\% en una, \textbf{1,4\,\%} en otra de
+6,4 millones de filas. Estimar la cardinalidad de 6,4 millones de filas a
+partir del 1,4\,\%, con el doble de su tamaño en cambios pendientes, produce
+estimaciones muy alejadas de la realidad. \textbf{Esta es la causa raíz de lo
+demostrado en \ref{sec:prueba}}.
+
+\paragraph{Agravante: las actualizaciones son sincrónicas.}
+\cod{is\_auto\_update\_stats\_async\_on} está en \cod{false} en las ocho
+bases revisadas. Cuando se cruza el umbral, la consulta que lo cruza
+\textbf{espera} a que se recalculen las estadísticas antes de compilar. Sobre
+una tabla de 6,4 millones de filas, en horario laboral, con 200 sesiones
+activas, esa espera se la come el usuario.
+
+\subsection{Escalado de bloqueos: dónde duele de verdad}
+\label{sec:escalado}
+
+\cod{sys.dm\_db\_index\_operational\_stats} mide, por tabla, cuántas veces
+SQL Server convirtió bloqueos de fila en bloqueos de tabla y cuánto tiempo se
+esperó por bloqueos. Acumulado de 27 días en \cod{Grupo}:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Tabla} & \textbf{Escalados} & \textbf{Espera fila} &
+\textbf{Espera pág.} & \textbf{Total} \\
+\midrule
+entEMPRESA        &  4.066 & 83.106\,s & 55.258\,s & \critico{138.364\,s (38\,h)} \\
+entORDENCARGA     & 16.398 & 54.744\,s & 25.453\,s & \critico{80.197\,s (22\,h)} \\
+entALMACEN\_LOTE  &  1.840 &  5.367\,s & 20.023\,s & \critico{25.390\,s (7\,h)} \\
+entPEDIDO         & 18.464 &  5.556\,s & 14.226\,s & 19.782\,s \\
+entPEDIDO\_DETALLE& 14.044 &  6.938\,s &  7.033\,s & 13.971\,s \\
+entMOVIMIENTO     & 11.281 &  6.232\,s &  2.845\,s &  9.077\,s \\
+entOC\_DETALLE    &  2.761 &  2.211\,s &  6.778\,s &  8.989\,s \\
+T\_Palets         & \aviso{193.154} & 551\,s & 4.259\,s & 4.810\,s \\
+StnEDIPEDIDO      & 15.832 & 751\,s & 1.092\,s & 1.843\,s \\
+STN\_720\_DATOS\_PESADA & 17.140 & 258\,s & 1.835\,s & 2.093\,s \\
+APP\_PA\_StockArticulo & \aviso{68.447} & 143\,s & 0\,s & 143\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{El número de escalados engaña; el tiempo de espera no.}
+\cod{T\_Palets} escala 193.154 veces y apenas genera espera.
+\cod{entEMPRESA} escala solo 4.066 veces y acumula \textbf{38 horas de espera
+por bloqueos}. Lo que importa no es cuántas veces se escala, sino sobre qué
+tabla y con cuánta concurrencia alrededor.
+
+\paragraph{Y \cod{entEMPRESA} tiene nombre y apellidos en la lista de jobs.}
+Tres procesos recurrentes trabajan sobre esa tabla en pleno horario laboral:
+
+\begin{itemize}\itemsep1pt
+  \item \cod{BLOQUEAR EMPRESAS CON IMPAGOS} — cada hora, de 07:10 a 19:10
+  \item \cod{BLOQUEAR EMPRESAS CON IMPAGOS MAIL} — cada hora, de 07:15 a 18:15
+  \item \cod{DesbloquearEmpresasSaldoNegativo} — cada 30 min, de 08:00 a 19:00
+\end{itemize}
+
+Una tabla maestra de empresas, que casi cualquier consulta del ERP necesita
+leer, reescrita cada media hora durante toda la jornada, sin versionado de
+filas. \textbf{Es la fuente de bloqueo concreta más importante localizada.}
+
+\paragraph{Hay una medida intermedia antes de RCSI.}
+\cod{ALTER TABLE \ldots SET (LOCK\_ESCALATION = DISABLE)} sobre esas tres
+tablas impide la conversión a bloqueo de tabla, a costa de más memoria de
+bloqueos. Es quirúrgica y reversible en segundos, por lo que conviene
+probarla antes que el cambio de aislamiento.
+
+\subsection{Ninguna base de datos usa versionado de filas}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Base de datos} & \textbf{Compat.} & \textbf{RCSI} &
+\textbf{Snapshot} & \textbf{Stats async} \\
+\midrule
+Grupo         & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+Cenusa        & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+OMS           & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+IFR           & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+ContaSTN      & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+ContaAlaplana & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+ContaVitaCer  & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+D365Eventos   & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+Informatica   & 160 & \critico{false} & \critico{OFF} & \critico{false} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\cod{READ\_COMMITTED\_SNAPSHOT} está desactivado en todas, y el aislamiento
+\emph{snapshot} también. Toda lectura toma bloqueos compartidos: \textbf{los
+lectores bloquean a los escritores y viceversa}. Con 200 sesiones de usuario
+leyendo mientras 140 jobs escriben, es exactamente la receta del cuadro
+observado.
+
+Activar RCSI en \cod{Grupo} haría que los lectores usaran versiones de fila
+en lugar de bloqueos compartidos, y la mayor parte del bloqueo
+lector-escritor desaparecería. \textbf{Es el cambio con mayor efecto
+potencial sobre el síntoma que dispara la alarma.} Contrapartidas: consume
+\emph{version store} en TempDB (ver \ref{sec:logs}, donde se demuestra que
+hay margen de sobra) y cambia la semántica de lectura, por lo que exige
+validación con la aplicación y una ventana con acceso exclusivo.
+
+\paragraph{Lo positivo.} El nivel de compatibilidad es 160 en todas y
+\cod{LEGACY\_CARDINALITY\_ESTIMATION} está en \cod{false}: el estimador
+moderno ya está en uso, no hay nada que arreglar ahí.
+
+\subsection{La carga real del SQL Agent}
+
+El primer indicio fue una foto instantánea: quince jobs corriendo a la vez,
+ocho de ellos arrancados \textbf{en el mismo segundo} (11:10:02), en su
+mayoría sincronizaciones con Dynamics 365 y con SCALE. Al consultar
+\cod{msdb.dbo.sysschedules} apareció el cuadro completo:
+\critico{140 planificaciones sub-diarias activas}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrlrlr}
+\toprule
+\textbf{Cada} & \textbf{Jobs} & \textbf{Cada} & \textbf{Jobs} &
+\textbf{Cada} & \textbf{Jobs} \\
+\midrule
+10\,s  & 3 & 3\,min  & 10 & 30\,min & 10 \\
+30\,s  & 5 & 4\,min  & 4  & 1\,h    & 24 \\
+75--100\,s & 5 & 5\,min & 13 & 2--4\,h & 15 \\
+1\,min & 6 & 10\,min & 6  & 6--12\,h & 17 \\
+2\,min & 7 & 15--18\,min & 10 & otros & 5 \\
+\bottomrule
+\end{tabular}
+\caption{Seis jobs cada minuto, siete cada dos, trece cada cinco. Tres
+\emph{cada diez segundos}. Solo los veinte más frecuentes suman unas 133.000
+ejecuciones en siete días: 19.000 al día.}
+\end{table}
+
+\subsubsection*{Algunos tardan más que su propio intervalo}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Job} & \textbf{Programado} & \textbf{Media} & \textbf{Máximo} &
+\textbf{Ocupación} \\
+\midrule
+D365\_SINCRONIZAR\_OMS\_DISP\_MAX  & 120\,s & 142\,s & 671\,s  & \critico{118\,\%} \\
+D365\_SYNC\_TRANSFORMAR\_DISP\_MAX & 180\,s & 173\,s & 689\,s  & \critico{96\,\%} \\
+D365\_ENVIO\_RECEPCIONES           &  60\,s &  47\,s & 913\,s  & \critico{78\,\%} \\
+stnSCALE\_COPIA\_SHIPPING\_LOAD    &  10\,s &   7\,s & 476\,s  & \critico{70\,\%} \\
+D365\_SINCRONIZAR\_DATOS\_COMPRAS  & 300\,s & 200\,s & 707\,s  & \aviso{67\,\%} \\
+D365\_SYNC\_MANTENER\_RESERVAS     & 240\,s &  98\,s & 667\,s  & 41\,\% \\
+D365\_SYNC\_CREAR\_PEDIDO\_GRUPO   & 240\,s &  97\,s & 1.737\,s & 40\,\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\cod{D365\_SINCRONIZAR\_OMS\_DISP\_MAX} está programado cada dos minutos y
+tarda de media dos minutos y veintidós segundos. \textbf{El «cada dos
+minutos» es ficción}: SQL Agent no solapa una instancia consigo misma, así
+que lo que ocurre es que arranca de nuevo en cuanto termina, de forma
+continua, todo el día. \cod{D365\_SYNC\_TRANSFORMAR\_DISP\_MAX}, al 96\,\%,
+está de hecho en la misma situación.
+
+\subsubsection*{Los máximos delatan quién sufre el bloqueo}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Job} & \textbf{Media} & \textbf{Máximo} & \textbf{Factor} \\
+\midrule
+stnSCALE\_INT\_ENT\_PRODUCCION    &  5\,s & 1.781\,s (30\,min) & \critico{356$\times$} \\
+Interface APP WEB                 & 16\,s & 4.590\,s (76\,min) & \critico{287$\times$} \\
+STNAUTO\_AUTOMATIZAR\_ALBARANEADO &  8\,s & 1.161\,s (19\,min) & \critico{145$\times$} \\
+STN\_MARCAR\_LINEAS\_PREPARADO    & 230\,s & 2.336\,s (39\,min) & 10$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Un proceso que normalmente tarda cinco segundos y un día tarda treinta
+minutos no se ha vuelto lento: se ha quedado esperando. Estos máximos
+\textbf{no son causa, son consecuencia}, y demuestran que el bloqueo no solo
+molesta a los usuarios: también atasca la propia automatización.
+
+\subsubsection*{El lote nocturno invade la jornada}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrl}
+\toprule
+\textbf{Job} & \textbf{Arranca} & \textbf{Máx.} & \textbf{Termina (peor caso)} \\
+\midrule
+RAPPEL\_ZCALCULOSFACTURAS & 04:00 & 11\,h 24\,m & \critico{15:24} \\
+IndexOptimize USER\_DATABASES Weekend & 02:30 & 13\,h 59\,m & \critico{16:29} \\
+TAREAS NOCTURNAS STN & 01:00 & 8\,h 14\,m & \critico{09:14} \\
+STN\_MANTENER\_ARTICULOS\_CONSUMOS & --- & 3\,h 09\,m & --- \\
+BAJA\_RIESGOS & 04:00 & 2\,h 16\,m & 06:16 \\
+ACTUALIZAR FOTO CARTERA ARTICULO & 05:30 & 1\,h 24\,m & 06:54 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\cod{TAREAS NOCTURNAS STN} puede terminar a las 09:14: \textbf{atraviesa de
+lleno el pico de bloqueos de las 08:00}. El historial de \cod{IndexOptimize}
+de los últimos ocho días confirma que el desbordamiento es real y recurrente:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrl}
+\toprule
+\textbf{Fecha} & \textbf{Empieza} & \textbf{Duración} & \textbf{Termina} \\
+\midrule
+24/10 (sáb, \emph{Weekend}) & 02:30 & 13\,h 59\,m & \critico{16:29} \\
+26/10 (dom, \emph{Daily})   & 02:30 &  6\,h 29\,m & \critico{08:59} \\
+22/10 & 02:30 & 1\,h 25\,m & 03:55 \\
+21, 23, 27, 28, 29/10 & 02:30 & $\approx$57\,min & $\approx$03:27 \\
+25/10 & 02:30 & \multicolumn{2}{l}{\aviso{registro corrupto en el historial}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+En días normales termina a las 03:27, pero el sábado llegó a las 16:29 y el
+domingo a las 08:59. (La fila del 25/10 devuelve duración negativa y fecha de
+fin en 2015: registro mal escrito en \cod{sysjobhistory}, probablemente de
+una ejecución interrumpida.)
+
+\subsubsection*{El equipo ya conocía esto}
+
+Entre los jobs activos hay dos cuyos nombres son, en sí mismos, un hallazgo:
+
+\begin{itemize}\itemsep1pt
+  \item \cod{REVISAR BLOQUEOS DE 7:30 a 8:30} — con tres planificaciones, una
+        de ellas cada 2 minutos entre las 06:00 y las 09:00.
+  \item \cod{CONTROL JOBS SINFIN} — cada 15 minutos, todo el día.
+\end{itemize}
+
+Alguien del equipo ya había identificado tanto la ventana de bloqueos de las
+08:00 como la tendencia de los jobs a quedarse colgados, y construyó
+vigilancia para ambas cosas. \textbf{Este informe no descubre el problema: lo
+cuantifica.}
+
+\subsection{Hay 25\,GB de memoria sin usar}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Medida} & \textbf{Valor} \\
+\midrule
+RAM física del servidor        & 131.071\,MB (128\,GB) \\
+Tope de SQL Server             & 96.896\,MB (94,6\,GB) \\
+Lo que SQL Server está usando  & 96.917\,MB — su tope completo \\
+RAM física libre               & \critico{25.657\,MB (25\,GB)} \\
+\emph{Page life expectancy}    & \critico{28\,s} \\
+\cod{system\_memory\_state\_desc} & \bien{Available physical memory is high} \\
+\cod{process\_physical\_memory\_low} & \bien{false} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dejar 33\,GB al sistema operativo en un servidor de 128\,GB es conservador;
+lo habitual sería reservar entre 16 y 20\,GB, lo que permitiría subir el tope
+unos 12--15\,GB. Y el sistema operativo confirma que esa RAM está realmente
+disponible: \emph{«Available physical memory is high»}, sin presión de
+memoria externa sobre el proceso. El nivel de hipervisor lo corrobora
+(\ref{sec:hipervisor}).
+
+\subsection{La CPU: ocupada, y es SQL Server quien la ocupa}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Medida (10 minutos, 11:35--11:44)} & \textbf{Valor} \\
+\midrule
+CPU de SQL Server, media   & \aviso{72\,\%} \\
+CPU de SQL Server, máximo  & \critico{83\,\%} \\
+CPU de otros procesos      & \bien{3--6\,\%} \\
+CPU libre, mínimo          & \critico{12\,\%} \\
+Tareas en cola (\emph{runnable})  & 5 \\
+Trabajos sin hilo asignado & \bien{0} \\
+\emph{Load factor} medio / máximo & 13 / 19 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La buena noticia: no hay ningún proceso ajeno comiéndose la máquina
+—antivirus, agentes de respaldo, otra instancia— y \cod{work\_queue\_count} =
+0 descarta el agotamiento del grupo de hilos. La mala: 72\,\% de media con
+picos del 83\,\% y solo un 12\,\% de margen, con 5 tareas esperando turno,
+es una máquina al límite. Respalda el \cod{SOS\_SCHEDULER\_YIELD} del
+7,8\,\%.
+
+\subsection{El disco queda descartado}
+
+Latencia real por fichero (\cod{dm\_io\_virtual\_file\_stats}, acumulada
+desde el arranque). Los ocho ficheros con peor latencia de lectura de toda la
+instancia —entre los que superan 10.000 lecturas— son \textbf{todos ficheros
+de log}, y ninguno pasa de 9\,ms:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Base de datos} & \textbf{Fichero} & \textbf{ms/lect.} &
+\textbf{ms/escr.} & \textbf{Escrituras} \\
+\midrule
+ContaAlaplana & IN3ContaTpl\_Log & 9 & 0 & 1.063.679 \\
+D365Eventos   & D365Eventos\_log & 9 & 1 & --- \\
+ContaVitaCer  & log              & 8 & 1 & --- \\
+Informatica   & Informatica\_Log & 8 & \aviso{12} & --- \\
+OMS           & OMS\_log         & 8 & 1 & --- \\
+ContaSTN      & IN3ContaTpl\_Log & 7 & 0 & 3.386.531 \\
+Grupo         & In3Tplnew\_log   & 7 & 2 & 281.926.025 \\
+IFR           & IFR\_log         & 7 & 2 & 363.247.671 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Siete a nueve milisegundos por lectura de log es normal, y las escrituras de
+log —las que de verdad frenan a las transacciones— están en 0--2\,ms.
+\textbf{El almacenamiento no contribuye al atasco.} Dos detalles menores:
+\cod{Informatica\_Log} escribe a 12\,ms, con poco volumen; y los logs de
+\cod{Grupo} e \cod{IFR} acumulan 9,5 y 22 millones de \emph{lecturas}, lo que
+es esperable al estar en un grupo de disponibilidad, porque la réplica lee el
+log continuamente.
+
+\subsection{Un índice que falta destaca sobre todos}
+
+\cod{sys.dm\_db\_missing\_index\_details} en \cod{Grupo}. El primer candidato
+supera al segundo \textbf{56 veces}:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrr}
+\toprule
+\textbf{BD} & \textbf{Tabla} & \textbf{Impacto estimado} & \textbf{Búsquedas} \\
+\midrule
+Grupo & \critico{cmCargaConfirmadaLogs} \cod{[TipoAccion]} &
+  \critico{45.515.122.075} & \critico{14.889.907} \\
+Grupo & entMOVIMIENTO    &   805.654.619 & 1.165.115 \\
+Grupo & stnERPGDExpDoc \cod{[IdDocumento]} & 437.142.615 & 260.722 \\
+Grupo & ExpExpedicion    &   422.831.787 &   141.554 \\
+Grupo & entALBARAN \cod{[atrIdLibro]} & 379.548.793 & 2.762 \\
+Grupo & DELETED\_RECID   &   334.384.162 &    19.746 \\
+Grupo & entALBARAN       &   287.714.517 &     9.724 \\
+OMS   & PurchaseOrderHeader & (menor)    &       --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Casi quince millones de búsquedas en 27 días sobre una tabla sin ese índice
+significa recorridos completos repetidos, y un recorrido completo es
+exactamente lo que dispara un plan paralelo. Siete de los ocho candidatos
+están en \cod{Grupo}.
+
+\paragraph{Con una advertencia.} Un índice de una sola columna de baja
+cardinalidad como \cod{[TipoAccion]} rara vez es el índice definitivo
+correcto. La cifra sirve para saber \emph{dónde mirar}, no para aplicarla tal
+cual: el paso siguiente es revisar las consultas reales que atacan esa tabla
+y diseñar el índice a partir de ellas.
+
+\subsection{El hipervisor queda descartado}
+\label{sec:hipervisor}
+
+Registrado el vCenter \cod{vcsa.central.local} en DPA, las cinco instancias
+aparecen vinculadas a su máquina virtual. SRVPRORPDB01 corre sobre el host
+ESXi \cod{10.150.0.8}, donde no comparte sitio con ninguna otra instancia
+monitorizada (PROMETEO y SRVPBI sí comparten el \cod{10.150.0.9}).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrr}
+\toprule
+\textbf{Métrica} & \textbf{Qué mide} & \textbf{Media} & \textbf{Máximo} \\
+\midrule
+\cod{vmReadyTime}        & espera por CPU física   & \bien{0,09\,\%} & \bien{0,13\,\%} \\
+\cod{vmCpuCoStopPercent} & desincronía entre vCPU  & \bien{0\,\%}    & \bien{0\,\%} \\
+\cod{vmPercentBallooned} & memoria reclamada       & \bien{0\,\%}    & \bien{0\,\%} \\
+\cod{vmMemorySwapInRate} & intercambio del host    & \bien{0}        & \bien{0} \\
+\cod{vmMemorySwapOutRate}& intercambio del host    & \bien{0}        & \bien{0} \\
+\cod{vmMemoryGranted}    & memoria concedida       & 130.778\,MB     & 130.778\,MB \\
+\cod{vmMemoryActive}     & conjunto activo         & 71,2\,\%        & 74,5\,\% \\
+\cod{hostCpuUsagePercent}& CPU del host            & \bien{40,2\,\%} & \bien{45,5\,\%} \\
+\cod{hostMemoryUsage}    & memoria del host        & \bien{39,4\,\%} & \bien{39,4\,\%} \\
+\cod{vmCpuUsagePercent}  & CPU usada por la VM     & \aviso{96,4\,\%}& \aviso{114,8\,\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Veredicto limpio.} El \emph{ready time} está en 0,09\,\%, cuando
+el umbral habitual de preocupación ronda el 5\,\% y el de problema serio
+supera el 10\,\%. El \emph{co-stop} —relevante precisamente en máquinas
+anchas de 16 vCPU— es cero. \textbf{La máquina virtual no espera por CPU
+física.} En memoria, las tres señales a descartar están a cero, con los
+128\,GB concedidos íntegros y el host al 39\,\%. Esto \textbf{confirma que
+los 25\,GB libres son reales} y respaldados por RAM física.
+
+\paragraph{Dato útil para planificar.} La VM consume prácticamente toda su
+asignación de CPU (96,4\,\%; los picos sobre 100\,\% se explican por el
+cálculo sobre frecuencia nominal con \emph{turbo} activo). Con \emph{ready
+time} a cero y el host al 40\,\%, no es que le falte CPU del host: es que
+\textbf{está usando los 16 vCPU que tiene}. Ampliar vCPU es técnicamente
+viable, pero sigue siendo la última acción del plan.
+
+\paragraph{Una falsa alarma que conviene explicar.}
+\cod{hostMaxTotalDiskLatency} marca 59\,ms de media y 211\,ms de pico. Al
+desglosar por dispositivo, los siete discos de fibra del host están todos
+\textbf{por debajo de 1,5\,ms}:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Dispositivo (host 10.150.0.8)} & \textbf{ms lectura} & \textbf{ms escritura} \\
+\midrule
+naa.\ldots 1367656699695a40 & \bien{0,0} & \bien{0,0} \\
+naa.\ldots 5f6d65661aaa6803 & \bien{0,0} & \bien{0,0} \\
+naa.\ldots 2c6b6566ef2fd7fe & \bien{0,1} & \bien{0,9} \\
+naa.\ldots 8f6f6566a55ec291 & \bien{0,5} & \bien{0,0} \\
+naa.\ldots 8ec6916839933029 & \bien{0,6} & \bien{0,1} \\
+naa.\ldots 086f65669cc587fa & \bien{0,8} & \bien{0,7} \\
+naa.\ldots a1bf9168335813e0 & \bien{0,8} & \bien{1,3} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\cod{maxTotalLatency} es el máximo entre \emph{todos} los dispositivos del
+host, incluidos los que no son almacén de datos: un dispositivo local o una
+ruta inactiva basta para dispararlo, y es un artefacto conocido en vSphere.
+Los dispositivos reales están sanos, lo que \textbf{concuerda con la medición
+desde dentro del invitado} y confirma por dos vías independientes que el
+almacenamiento no es el problema.
+
+\paragraph{Advertencia de ventana.} Solo hay $\approx$70 minutos de
+histórico. Las magnitudes son inequívocas, pero el pico de las 08:00 no se ha
+observado aún a este nivel.
+
+\subsection{El grupo de disponibilidad queda descartado}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lllll}
+\toprule
+\textbf{Grupo} & \textbf{Réplica} & \textbf{Modo} & \textbf{Rol} &
+\textbf{Salud} \\
+\midrule
+AG-ATENEA2 & SRVPRORPDB01 & \bien{ASYNCHRONOUS\_COMMIT} & PRIMARY & \bien{HEALTHY} \\
+AG-ATENEA2 & SRVPRORPDB02 & \bien{ASYNCHRONOUS\_COMMIT} & SECONDARY & \bien{HEALTHY} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Se sospechó que el AG estuviera en confirmación síncrona, lo que haría que
+cada \emph{commit} esperase a la réplica secundaria y alargase la retención
+de bloqueos. \textbf{No es el caso}: ambas réplicas están en
+\cod{ASYNCHRONOUS\_COMMIT}, con retraso de 0 segundos y estado
+\cod{HEALTHY}. Las colas de envío son de 60\,KB y las de rehacer, de 31\,KB
+en \cod{Grupo}. El AG no contribuye al bloqueo.
+
+Sí es coherente con el volumen de escritura: las tasas de rehacer son de
+65.609 en \cod{Grupo} y 49.590 en \cod{IFR}, lo que explica los millones de
+lecturas sobre los ficheros de log vistos antes.
+
+\subsection{Registros de transacciones y \emph{version store}}
+\label{sec:logs}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Base de datos} & \textbf{VLFs} & \textbf{Activos} &
+\textbf{Tamaño medio} & \textbf{Log total} \\
+\midrule
+Grupo  & \aviso{1.940} & 12 & 63,9\,MB & 121,0\,GB \\
+IFR    & 127 & 6 & \aviso{1.465,7\,MB} & \critico{181,8\,GB} \\
+Cenusa & 97 & \aviso{82 (85\,\%)} & 110,0\,MB & 10,4\,GB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ninguno es grave, pero los tres fallan por motivos opuestos. \cod{Grupo}
+tiene \textbf{1.940 VLFs}, por encima del millar que se toma como
+referencia: no afecta al trabajo diario, pero ralentiza arranque,
+recuperación y copias de log. \cod{IFR} tiene el problema contrario —127 VLFs
+de \textbf{1,4\,GB cada uno}—: con fragmentos tan grandes, un solo VLF activo
+inmoviliza 1,4\,GB de log. Y \cod{Cenusa} tiene el \textbf{85\,\% de sus VLFs
+activos}.
+
+Al margen de los VLFs, llama la atención el \textbf{tamaño absoluto de los
+logs}: 181,8\,GB en \cod{IFR} y 121\,GB en \cod{Grupo}. Son coherentes con
+los 363 y 281 millones de escrituras medidas, pero un log de ese tamaño
+sugiere que en algún momento no se truncó, y conviene verificar la política
+de copias de log.
+
+\paragraph{Línea base del \emph{version store}, antes de tocar RCSI.}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{TempDB, uso actual} & \textbf{Valor} \\
+\midrule
+\emph{Version store}   & \bien{31\,MB} \\
+Objetos de usuario     & 181\,MB \\
+Objetos internos       & 1.268\,MB \\
+Espacio libre          & \bien{430.726\,MB (420\,GB)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El \emph{version store} ocupa hoy \textbf{31\,MB}, lo lógico con RCSI
+desactivado. Es la cifra de partida contra la que medir después del cambio. Y
+el dato relevante: hay \textbf{420\,GB libres} en TempDB. Aunque activar RCSI
+en \cod{Grupo} multiplicara el \emph{version store} por mil, seguiría
+sobrando sitio. \textbf{Esto reduce considerablemente el riesgo de la acción
+9}: el argumento en contra ya no puede ser el espacio de TempDB, solo la
+validación funcional.
+
+\subsection{El bloqueo de esquema de 392 segundos}
+\label{sec:schm}
+
+Se propuso que lo causara \cod{IndexOptimize}, ya que una reconstrucción de
+índice toma un bloqueo \cod{Sch-M} incompatible con cualquier lectura.
+\textbf{Los horarios lo desmienten}: el 29 de octubre ese job se ejecutó de
+02:30 a 03:26:58, siete horas antes del incidente de la mañana. Hipótesis
+descartada.
+
+La explicación más probable ahora es otra: un \cod{TRUNCATE TABLE} sobre
+alguna de las tablas de paso que se vacían y recargan continuamente
+—\cod{entEFECTO\_FacturasCobradas365} es la candidata evidente—, porque
+\cod{TRUNCATE} también toma \cod{Sch-M}. \textbf{Es una hipótesis, no un
+hecho}: confirmarla requiere capturar el \emph{blocked process report} o una
+sesión de \emph{Extended Events}, que no se ha hecho.
+
+% =====================================================================
+\newpage
+\section{La base de datos \cod{Cenusa}}
+
+Esta base de datos apareció por casualidad, al ordenar las consultas por
+memoria concedida. No estaba en el foco inicial —el análisis se centraba en
+\cod{Grupo}, que es donde se veían las cadenas de bloqueo— pero vive en la
+misma instancia, ocupa 46\,GB y concentra \textbf{los costes unitarios más
+altos de toda la investigación}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Característica} & \textbf{Valor} \\
+\midrule
+Tamaño                              & 47.270\,MB (46\,GB) \\
+Nivel de compatibilidad             & 160 \\
+Estado                              & ONLINE \\
+\cod{READ\_COMMITTED\_SNAPSHOT}     & \critico{false} \\
+\cod{AUTO\_UPDATE\_STATISTICS\_ASYNC} & \critico{false} \\
+\textbf{Disparadores sobre tablas}  & \critico{575} \\
+De ellos, deshabilitados            & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Quinientos setenta y cinco disparadores}
+
+Solo cuatro están desactivados. Y están concentrados en las tablas más
+transitadas:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Tabla} & \textbf{Disparadores} & \textbf{Modificaciones (27 días)} \\
+\midrule
+entEMPRESA           & \critico{9} &  8.759.807 \\
+entALBARAN           & \critico{8} & 26.778.967 \\
+entMOVIMIENTO        & \critico{8} &  5.007.080 \\
+entPEDIDO            & \critico{8} & 24.107.314 \\
+entPEDIDO\_DETALLE   & \critico{8} & \critico{37.738.378} \\
+entARTICULO          & 6 & 11.772.885 \\
+entOC\_DETALLE       & 6 & --- \\
+entARTICULO\_UBICACION & 5 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Por qué esto importa para los bloqueos.} Un disparador
+\textbf{se ejecuta dentro de la transacción de quien lo dispara}. No es
+trabajo que ocurra «después»: es tiempo que la sentencia original pasa
+reteniendo sus bloqueos. Cada \cod{UPDATE} sobre \cod{entPEDIDO\_DETALLE}
+arrastra ocho disparadores antes de poder confirmar. Con 37,7 millones de
+modificaciones sobre esa tabla, la amplificación es enorme.
+
+\subsection{Lo que cuestan}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Objeto} & \textbf{Ejecuciones} & \textbf{CPU} &
+\textbf{Mem. concedida} & \textbf{Aprov.} \\
+\midrule
+\cod{ACTUALIZA\_EMPRESAS\_DIRECCIONES\ldots} & 336 & \critico{4.828\,s} &
+  \critico{1.171\,MB} & \critico{17,4\,\%} \\
+\cod{tU\_entALBARAN} & 21.365 & 2.927\,s & --- & --- \\
+\cod{tU\_entALBARAN} & \critico{1.700.015} & 1.851\,s & 2\,MB & 40,6\,\% \\
+\cod{tU\_entMOVIMIENTO} ($\times$6) & 212.512 c/u & \critico{10.268\,s} & 1\,MB &
+  0--51\,\% \\
+\cod{update entFACTURA} ($\times$2) & 432.729 c/u & --- & 58\,MB & \critico{1,5\,\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Un gigabyte de memoria para aprovechar el 17\,\%.} El
+procedimiento \cod{ACTUALIZA\_EMPRESAS\_DIRECCIONES\_FICHAS\_POR\_PROVEEDOR}
+recibe \textbf{1.171\,MB de concesión en cada una de sus 336 ejecuciones} y
+usa el 17,4\,\%. Además lee \textbf{500.544 páginas por ejecución}, unos
+3,8\,GB recorridos cada vez. Es, por amplio margen, la sentencia más cara
+localizada en toda la instancia, y supera al caso de los 506\,MB de
+\ref{sec:prueba}.
+
+\paragraph{Un disparador con 31.000 lecturas por disparo.} La primera entrada
+de \cod{tU\_entALBARAN} se ejecuta 21.365 veces leyendo \textbf{31.135
+páginas cada vez}: unos 665 millones de lecturas lógicas acumuladas solo por
+ese disparador. Y la segunda entrada se dispara \textbf{1,7 millones de
+veces}.
+
+\paragraph{Las seis caras del mismo disparador.}
+\cod{tU\_entMOVIMIENTO} aparece seis veces porque son seis sentencias
+distintas dentro del mismo cuerpo, cada una ejecutada 212.512 veces. Entre
+las seis suman \textbf{10.268 segundos de CPU}, casi tres horas, y varias
+aprovechan el 0\,\% de la memoria concedida.
+
+\paragraph{Y 58\,MB aprovechados al 1,5\,\%.} Dos sentencias
+\cod{update entFACTURA set atrBaseBruta\ldots}, con el patrón característico
+de un cuerpo de disparador, se ejecutan 432.729 veces cada una reservando
+58\,MB y usando el 1,5\,\%.
+
+\subsection{\cod{AUDITORIA2}: la tabla que lo explica}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Tabla} & \textbf{Filas} & \textbf{Modificaciones} & \textbf{Muestra} \\
+\midrule
+AUDITORIA2       & \critico{29.708.129} & \critico{89.149.199} & \critico{1,0\,\%} \\
+entALBARAN\_IVA  & 20.384.782 &  81.387 & \critico{1,1\,\%} \\
+entPEDIDO        &    920.167 & 167.803 & \aviso{3,7--4,4\,\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Una tabla de auditoría de \textbf{29,7 millones de filas} que acumula
+\textbf{89 millones de modificaciones} —tres veces su propio tamaño— desde
+que se actualizaron sus estadísticas esa madrugada. Y muestreada al
+\textbf{1\,\%}.
+
+Esto cierra el círculo de \cod{Cenusa}: los 575 disparadores escriben en
+\cod{AUDITORIA2} en cada modificación. Cada \cod{UPDATE} de la aplicación
+arrastra sus ocho o nueve disparadores, que a su vez escriben auditoría,
+dentro de la misma transacción y reteniendo los mismos bloqueos. El coste no
+es solo de CPU: es de \textbf{duración de transacción}, que es exactamente lo
+que genera el bloqueo.
+
+El muestreo al 1\,\% en tablas de 20 y 30 millones de filas merece revisión
+por sí mismo. Es el valor que aplica \cod{IndexOptimize} por defecto en
+tablas grandes, y sobre esos volúmenes produce histogramas de poca utilidad.
+
+\subsection{Esperas de bloqueo en \cod{Cenusa}}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Tabla} & \textbf{Escalados} & \textbf{Espera fila} &
+\textbf{Espera pág.} & \textbf{Modificaciones} \\
+\midrule
+entPEDIDO\_DETALLE   &  4.209 &   159\,s & \critico{10.792\,s} & 37.738.378 \\
+entALBARAN           &     21 &   398\,s & 3.113\,s & 26.778.967 \\
+entARTICULO          &    117 & 2.884\,s &   146\,s & 11.772.885 \\
+entEMPRESA           &      0 & 1.465\,s &   361\,s &  8.759.807 \\
+entEMBALAJE\_ARTICULO&  1.789 & 1.328\,s &    41\,s & 11.528.414 \\
+entPEDIDO            & \aviso{69.119} &  77\,s & 1.314\,s & 24.107.314 \\
+entMOVIMIENTO        & \aviso{52.554} &   0\,s & 1.264\,s &  5.007.080 \\
+entFICHA             &  5.961 &    86\,s &   421\,s &     81.756 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las cifras son un orden de magnitud menores que las de \cod{Grupo}
+(\ref{sec:escalado}), donde \cod{entEMPRESA} acumula 138.364\,s. Pero el
+volumen de modificaciones es enorme: 37,7 millones sobre
+\cod{entPEDIDO\_DETALLE} y 26,8 sobre \cod{entALBARAN}, cada una con ocho
+disparadores encima.
+
+\subsection{Lo que sí está bien en \cod{Cenusa}}
+
+\textbf{Los índices ausentes no son un problema aquí.} El mejor candidato
+tiene un impacto estimado de 31 millones, frente a los 45.515 millones del
+candidato de cabeza en \cod{Grupo}: unas \textbf{1.500 veces menos}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrr}
+\toprule
+\textbf{Tabla} & \textbf{Columnas} & \textbf{Impacto} & \textbf{Búsquedas} \\
+\midrule
+entMOVIMIENTO      & \cod{[atrIdTipoPedido]} & 30.973.289 & 8.298 \\
+entPEDIDO          & \cod{[ifrCreadoDesdeD365]} & 30.497.282 & 9.142 \\
+entPEDIDO\_DETALLE & \cod{[atrIdEmbalaje]} & 19.345.998 & 4.573 \\
+entMOVIMIENTO      & \cod{[atrReferencia]} + tipo & 13.478.693 & \aviso{129.980} \\
+entPEDIDO\_DETALLE & \cod{[atrPendiente]} & 13.265.771 & 1.363 \\
+entFICHA           & \cod{[atrFechaPrecio]} & 3.814.413 & 914 \\
+entARTICULO        & \cod{[atrArticuloActivo]} & 2.625.373 & 2.491 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+En \cod{Cenusa} el problema son los disparadores y el muestreo de
+estadísticas, \textbf{no la falta de índices}.
+
+\subsection{Qué hacer con esto}
+
+Conviene decirlo sin adornos: \textbf{575 disparadores son una decisión de
+arquitectura, no un parámetro}. Revisarlos uno a uno es trabajo de
+desarrollo, de meses. Pero hay dos pasos acotados y de alto rendimiento:
+
+\begin{enumerate}[leftmargin=1.4em]\itemsep2pt
+  \item \textbf{Revisar
+        \cod{ACTUALIZA\_EMPRESAS\_DIRECCIONES\_FICHAS\_POR\_PROVEEDOR}.} Una
+        sola sentencia, 336 ejecuciones, 1,1\,GB de concesión y 3,8\,GB
+        leídos por vez. Es el mejor retorno por hora invertida de todo el
+        informe.
+  \item \textbf{Revisar los disparadores de \cod{entMOVIMIENTO} y
+        \cod{entALBARAN}}, que son los que más CPU consumen y los que más
+        alargan las transacciones ajenas.
+\end{enumerate}
+
+\paragraph{Advertencia de alcance.} Este apartado abre un frente que
+\textbf{no estaba en el encargo}. Las cifras son sólidas, pero no se ha
+revisado el contenido funcional de los disparadores, y las decisiones sobre
+cuáles tocar requieren conocimiento de la aplicación que este informe no
+tiene. \textbf{Dado lo que ha aparecido, \cod{Cenusa} merece un análisis
+propio.}
+
+% =====================================================================
+\newpage
+\section{Hipótesis descartadas, y con qué se descartaron}
+\label{sec:descartes}
+
+Tan importante como lo que se recomienda es lo que \emph{no} hay que tocar.
+Todo lo de esta tabla se comprobó por medición directa, no por criterio.
+
+\begin{longtable}{p{4.1cm}p{5.1cm}p{5.4cm}}
+\toprule
+\textbf{Hipótesis} & \textbf{Qué se midió} & \textbf{Resultado} \\
+\midrule
+\endhead
+Paralelismo mal configurado (instancia)
+  & \cod{sys.configurations}
+  & \bien{Descartado.} MAXDOP 8 sobre 16 núcleos y \emph{cost threshold} 100,
+    frente al 5 por defecto \\
+Paralelismo sobrescrito por base de datos
+  & \cod{sys.database\_scoped\_configu\-rations} en \cod{Grupo}
+  & \bien{Descartado.} MAXDOP\,=\,0 con \cod{is\_value\_default}\,=\,\cod{true};
+    en ese ámbito el 0 significa «heredar la instancia» \\
+Estimador de cardinalidad antiguo
+  & \cod{compatibility\_level} y \cod{LEGACY\_CARDINALITY\_ESTIMATION}
+  & \bien{Descartado.} Nivel 160 y \cod{false} en las nueve bases \\
+TempDB mal dimensionado
+  & \cod{tempdb.sys.database\_files}, \cod{dm\_db\_file\_space\_usage}
+  & \bien{Descartado.} 8 ficheros de datos, 99\,\% libre, log al 93\,\% libre \\
+Almacenamiento lento (invitado)
+  & \cod{dm\_io\_virtual\_file\_stats} por fichero
+  & \bien{Descartado.} Peor latencia de lectura 9\,ms; escrituras de log
+    0--2\,ms \\
+Almacenamiento lento (host)
+  & \cod{hostTotalReadLatency}, \cod{hostTotalWriteLatency} por dispositivo
+  & \bien{Descartado.} Los siete discos de fibra por debajo de 1,5\,ms \\
+Proceso ajeno consumiendo CPU
+  & \cod{RING\_BUFFER\_SCHEDULER\_MONITOR}
+  & \bien{Descartado.} Los procesos ajenos a SQL Server, entre el 3 y el
+    6\,\% \\
+Agotamiento del grupo de hilos
+  & \cod{dm\_os\_schedulers}
+  & \bien{Descartado.} \cod{work\_queue\_count}\,=\,0 en todos \\
+Contención de CPU en el hipervisor
+  & \cod{vmReadyTime}, \cod{vmCpuCoStopPercent}
+  & \bien{Descartado.} 0,09\,\% y 0\,\%. La VM no espera por CPU física \\
+Presión de memoria del hipervisor
+  & \cod{vmPercentBallooned}, \cod{vmMemorySwap*}
+  & \bien{Descartado.} Todo a cero, 128\,GB concedidos \\
+Confirmación síncrona del grupo de disponibilidad
+  & \cod{sys.availability\_replicas}, \cod{dm\_hadr\_database\_replica\_states}
+  & \bien{Descartado.} \cod{ASYNCHRONOUS\_COMMIT} en ambas réplicas, salud
+    \cod{HEALTHY}, retraso 0\,s \\
+Índices ausentes en \cod{Cenusa}
+  & \cod{dm\_db\_missing\_index\_*}
+  & \bien{Descartado.} Impacto 1.500 veces menor que en \cod{Grupo} \\
+\cod{IndexOptimize} como causa del \cod{Sch-M} de 392\,s
+  & \cod{msdb.dbo.sysjobhistory}
+  & \bien{Descartado.} Terminó a las 03:26:58, siete horas antes \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Lo que no se recomienda hacer.}
+
+\begin{itemize}[leftmargin=1.4em]\itemsep3pt
+  \item \textbf{Matar sesiones de forma rutinaria.} Resuelve el síntoma del
+        momento y oculta el problema. Solo tiene sentido como medida puntual
+        ante una cadena parada varios minutos.
+  \item \textbf{Tocar todo a la vez.} Si se cambian simultáneamente los jobs,
+        la memoria y las estadísticas, no se sabrá cuál funcionó ni cuál
+        empeoró algo.
+  \item \textbf{Comprar vCPU antes de corregir las causas.} Con parte del
+        72\,\% de CPU gastándose en paralelismo innecesario, es pagar por
+        hacer lo mismo más rápido.
+  \item \textbf{Aplicar los índices sugeridos tal cual.} Las cifras de
+        impacto son heurísticas y no consideran los índices existentes ni el
+        coste en escritura.
+\end{itemize}
+
+% =====================================================================
+\newpage
+\section{Plan de acción}
+\label{sec:plan}
+
+Catorce acciones en tres fases, cada una con su métrica de verificación.
+Ordenadas por relación entre esfuerzo, riesgo y efecto.
+
+\begin{longtable}{p{0.7cm}p{4.9cm}p{4.3cm}p{4.6cm}}
+\toprule
+\textbf{\#} & \textbf{Acción} & \textbf{Métrica de verificación} &
+\textbf{Cómo saber que funcionó} \\
+\midrule
+\endhead
+\multicolumn{4}{l}{\cellcolor{acento!10}\textbf{Fase 1 — esta semana.} Sin
+parada, reversible, sin desarrollo.} \\
+\midrule
+1 & \cod{AUTO\_UPDATE\_STATISTICS\_ASYNC ON} en \cod{Grupo} y \cod{Cenusa}
+  & esperas de compilación; \cod{SQL Compilations/sec}
+  & desaparecen los picos de latencia sin causa aparente \\
+2 & Estadísticas \cod{FULLSCAN} 3--4 veces al día sobre
+    \cod{entEFECTO\_FacturasCobradas365}, \cod{STN\_ERP\_ANALISIS\_VENTAS\_PEDIDOS}
+    y \cod{AUDITORIA2}
+  & \cod{modification\_counter} de esas tablas
+  & se mantiene por debajo del umbral, no en 26$\times$ el tamaño \\
+3 & Alargar el intervalo de \cod{D365\_SINCRONIZAR\_OMS\_DISP\_MAX} y
+    \cod{D365\_SYNC\_TRANSFORMAR\_DISP\_MAX}
+  & \cod{pct\_ocupacion} (consulta \ref{sql:ocupacion})
+  & por debajo del 50\,\% ambos \\
+4 & \cod{LOCK\_ESCALATION = DISABLE} en \cod{entEMPRESA},
+    \cod{entORDENCARGA} y \cod{entALMACEN\_LOTE}
+  & \cod{row\_lock\_wait\_in\_ms} de esas tres tablas
+  & caída clara frente a las 38, 22 y 7 horas actuales \\
+5 & \cod{max server memory} de 94,6 a 107\,GB
+  & \emph{Page life expectancy}
+  & de 124\,s a más de 300\,s de media \\
+\midrule
+\multicolumn{4}{l}{\cellcolor{acento!10}\textbf{Fase 2 — este mes.} Requiere
+análisis, sin cambiar la aplicación.} \\
+\midrule
+6 & Sacar el lote nocturno de la jornada: \cod{RAPPEL\_ZCALCULOSFACTURAS},
+    \cod{TAREAS NOCTURNAS STN}, \cod{IndexOptimize}
+  & hora de fin real de esos jobs
+  & ninguno pasa de las 07:00 \\
+7 & Escalonar los arranques coincidentes (anexo \ref{sec:anexo})
+  & jobs activos por segundo
+  & ningún segundo con más de 2 arranques \\
+8 & Índice de \cod{Grupo.cmCargaConfirmadaLogs}, diseñado desde las consultas
+    reales
+  & impacto en \cod{dm\_db\_missing\_index\_*}
+  & el candidato desaparece de la lista \\
+9 & Parametrizar \cod{INSERT StnERPArticuloLoteLinea}
+  & nº de planes distintos para esa sentencia
+  & de 6 a 1; baja el CPU de 31.000\,s \\
+10 & Activar Query Store en \cod{Grupo}
+  & ---
+  & habilita demostrar la evolución de los planes \\
+11 & Revisar la política de copias de log y reducir los VLFs de \cod{Grupo}
+  & \cod{dm\_db\_log\_info}
+  & por debajo de 1.000 VLFs; logs que dejan de crecer \\
+\midrule
+\multicolumn{4}{l}{\cellcolor{acento!10}\textbf{Fase 3 — este trimestre.}
+Requiere ventana, desarrollo o compra.} \\
+\midrule
+12 & \cod{READ\_COMMITTED\_SNAPSHOT ON} en \cod{Grupo}
+  & sesiones bloqueadas; \cod{TempDB Version Store} (hoy 31\,MB, 420\,GB
+    libres)
+  & bloqueos casi a cero; el espacio de TempDB ya no es un riesgo \\
+13 & \cod{Cenusa}: revisar
+     \cod{ACTUALIZA\_EMPRESAS\_DIRECCIONES\ldots} y los disparadores de
+     \cod{entMOVIMIENTO} y \cod{entALBARAN}
+  & memoria concedida y lecturas lógicas por ejecución
+  & bajar de 1.171\,MB y de 500.544 lecturas \\
+14 & Valorar ampliar vCPU por encima de 16 —el host va al 40\,\%, hay holgura
+  & \cod{SOS\_SCHEDULER\_YIELD}; \emph{runnable tasks}
+  & solo si tras las fases 1--2 sigue alto \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Por qué este orden.} Las acciones 1 a 5 se pueden hacer esta misma
+semana: no requieren parada y son reversibles. La 12 es la que más efecto
+tendría sobre el síntoma que dispara la alarma, pero es la única que cambia
+la semántica de lectura de la aplicación, así que va después de haber ganado
+margen con las baratas —y ahora que se sabe que TempDB tiene 420\,GB libres,
+su único riesgo real es funcional. La 14 se deja para el final a propósito.
+
+\paragraph{Una regla para las tres fases.} \textbf{Un cambio a la vez, con 48
+horas de observación entre uno y otro.} Si se tocan los jobs, la memoria y
+las estadísticas el mismo día, el resultado será mejor o peor pero nadie
+sabrá por qué, y no habrá forma de deshacer solo la parte que falló.
+
+\subsection{Cómo medir si ha funcionado}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Indicador} & \textbf{Hoy} & \textbf{Objetivo razonable} \\
+\midrule
+\% de muestras con bloqueo (7 días) & 88\,\% & por debajo del 30\,\% \\
+Media de sesiones bloqueadas        & 4,9    & por debajo de 1 \\
+Pico a las 8\,h                     & 9,0    & por debajo de 3 \\
+\emph{Page life expectancy} medio   & 124\,s & por encima de 300\,s \\
+Esperas \cod{CX*} sobre el total    & 58,7\,\% & por debajo del 30\,\% \\
+Espera de bloqueo en \cod{entEMPRESA} & 138.364\,s & por debajo de 20.000\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Lo que queda pendiente de medir}
+
+\begin{itemize}[leftmargin=1.4em]\itemsep3pt
+  \item \textbf{Delta de esperas en ventana de 5 minutos durante el pico de
+        las 08:00.} Todo el análisis de esperas es acumulado de 27 días; un
+        delta en hora punta diría qué duele \emph{entonces}, no de media.
+  \item \textbf{Métricas de hipervisor con 7 días completos}, para observar
+        el pico de las 08:00 a ese nivel.
+  \item \textbf{El origen real del bloqueo \cod{Sch-M}}, mediante
+        \emph{blocked process report} o \emph{Extended Events}.
+  \item \textbf{El contenido funcional de los 575 disparadores de
+        \cod{Cenusa}.}
+\end{itemize}
+
+% =====================================================================
+\newpage
+\section{Consultas de diagnóstico}
+
+Todas de solo lectura, ejecutadas sobre SRVPRORPDB01 con la cuenta
+\cod{dpaMONITOR}. Reproducen punto por punto las cifras de este informe.
+
+\subsection{Configuración de paralelismo, memoria y núcleos}
+
+\begin{lstlisting}[style=sql]
+SELECT name, value_in_use, description
+FROM   sys.configurations
+WHERE  name IN ('max degree of parallelism',
+                'cost threshold for parallelism',
+                'max server memory (MB)',
+                'max worker threads');
+
+SELECT cpu_count AS nucleos, hyperthread_ratio, softnuma_configuration_desc,
+       sqlserver_start_time, virtual_machine_type_desc,
+       scheduler_count AS schedulers,
+       DATEDIFF(DAY, sqlserver_start_time, GETDATE()) AS dias_encendido
+FROM   sys.dm_os_sys_info;
+\end{lstlisting}
+
+\subsection{Configuración por base de datos}
+
+\begin{lstlisting}[style=sql]
+SELECT name AS bd, compatibility_level AS compat,
+       is_read_committed_snapshot_on   AS rcsi,
+       snapshot_isolation_state_desc   AS snapshot_iso,
+       is_auto_update_stats_on         AS auto_upd_stats,
+       is_auto_update_stats_async_on   AS auto_upd_async,
+       is_query_store_on               AS query_store
+FROM   sys.databases
+WHERE  database_id > 4
+ORDER BY name;
+
+USE Grupo;   -- repetir por cada base de interes
+
+SELECT name AS opcion, value, value_for_secondary, is_value_default
+FROM   sys.database_scoped_configurations
+ORDER BY name;
+\end{lstlisting}
+
+\subsection{Esperas acumuladas, excluyendo las inactivas}
+
+\begin{lstlisting}[style=sql]
+SELECT TOP 12 wait_type,
+       wait_time_ms/1000 AS espera_s,
+       waiting_tasks_count AS veces,
+       CAST(100.0*wait_time_ms/SUM(wait_time_ms) OVER() AS DECIMAL(5,2)) AS pct
+FROM   sys.dm_os_wait_stats
+WHERE  waiting_tasks_count > 0
+  AND  wait_type NOT IN (
+       'CLR_SEMAPHORE','LAZYWRITER_SLEEP','RESOURCE_QUEUE','SLEEP_TASK',
+       'SLEEP_SYSTEMTASK','SQLTRACE_BUFFER_FLUSH','WAITFOR','LOGMGR_QUEUE',
+       'CHECKPOINT_QUEUE','REQUEST_FOR_DEADLOCK_SEARCH','XE_TIMER_EVENT',
+       'BROKER_TO_FLUSH','BROKER_TASK_STOP','CLR_MANUAL_EVENT',
+       'DIRTY_PAGE_POLL','HADR_WORK_QUEUE','HADR_TIMER_TASK',
+       'HADR_NOTIFICATION_DEQUEUE','HADR_FILESTREAM_IOMGR_IOCOMPLETION',
+       'HADR_LOGCAPTURE_WAIT','HADR_CLUSAPI_CALL','SP_SERVER_DIAGNOSTICS_SLEEP',
+       'QDS_ASYNC_QUEUE','QDS_SHUTDOWN_QUEUE','XE_DISPATCHER_WAIT')
+ORDER BY wait_time_ms DESC;
+\end{lstlisting}
+
+\noindent La lista de exclusión es importante: sin ella,
+\cod{HADR\_WORK\_QUEUE} por sí solo aporta 81 millones de segundos de espera
+inactiva y distorsiona todos los porcentajes.
+
+\subsection{Prueba del paralelismo innecesario}
+
+\begin{lstlisting}[style=sql]
+-- Consultas con plan paralelo que apenas devuelven filas
+SELECT TOP 12 DB_NAME(st.dbid) AS bd, qs.execution_count AS ejec,
+       qs.total_worker_time/1000000  AS cpu_total_s,
+       qs.total_elapsed_time/1000000 AS dur_total_s,
+       CAST(qs.total_worker_time*1.0/NULLIF(qs.total_elapsed_time,0)
+            AS DECIMAL(6,2)) AS factor_par,
+       qs.total_grant_kb/NULLIF(qs.execution_count,0)/1024 AS concedido_mb,
+       CAST(100.0*qs.total_used_grant_kb/NULLIF(qs.total_grant_kb,0)
+            AS DECIMAL(5,1)) AS pct_aprov,
+       qs.total_rows/NULLIF(qs.execution_count,0) AS filas_media,
+       LEFT(LTRIM(SUBSTRING(st.text,(qs.statement_start_offset/2)+1,
+         ((CASE qs.statement_end_offset WHEN -1 THEN DATALENGTH(st.text)
+           ELSE qs.statement_end_offset END - qs.statement_start_offset)/2)+1)),80)
+         AS sentencia
+FROM   sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+WHERE  qs.total_worker_time > qs.total_elapsed_time * 1.5   -- plan paralelo
+  AND  qs.total_worker_time > 60000000                      -- > 60 s de CPU
+ORDER BY qs.total_worker_time DESC;
+\end{lstlisting}
+
+\begin{lstlisting}[style=sql]
+-- Memoria concedida frente a memoria usada: la huella de la mala estimacion
+SELECT TOP 15 DB_NAME(st.dbid) AS bd, qs.execution_count AS ejec,
+       qs.total_grant_kb/NULLIF(qs.execution_count,0)/1024      AS concedido_mb,
+       qs.total_used_grant_kb/NULLIF(qs.execution_count,0)/1024 AS usado_mb,
+       CAST(100.0*qs.total_used_grant_kb/NULLIF(qs.total_grant_kb,0)
+            AS DECIMAL(5,1)) AS pct_aprovechado,
+       qs.total_logical_reads/NULLIF(qs.execution_count,0) AS lecturas_media
+FROM   sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+WHERE  qs.total_grant_kb > 0 AND qs.execution_count > 50
+ORDER BY qs.total_grant_kb DESC;
+\end{lstlisting}
+
+\subsection{Obsolescencia de las estadísticas}
+
+\begin{lstlisting}[style=sql]
+USE Grupo;   -- o Cenusa
+
+SELECT TOP 12 OBJECT_NAME(s.object_id) AS tabla, s.name AS estadistica,
+       sp.last_updated, sp.rows AS filas,
+       CAST(100.0*sp.rows_sampled/NULLIF(sp.rows,0) AS DECIMAL(5,1)) AS pct_muestra,
+       sp.modification_counter AS modificaciones,
+       DATEDIFF(DAY, sp.last_updated, GETDATE()) AS dias
+FROM   sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE  sp.rows > 1000000
+  AND  OBJECTPROPERTY(s.object_id, 'IsUserTable') = 1
+ORDER BY sp.modification_counter DESC;
+\end{lstlisting}
+
+\subsection{Escalado y espera de bloqueos por tabla}
+
+\begin{lstlisting}[style=sql]
+USE Grupo;   -- o Cenusa
+
+SELECT TOP 15 OBJECT_NAME(ios.object_id) AS tabla,
+       SUM(ios.index_lock_promotion_count)         AS escalados,
+       SUM(ios.index_lock_promotion_attempt_count) AS intentos,
+       SUM(ios.row_lock_wait_count)                AS esperas_fila,
+       SUM(ios.row_lock_wait_in_ms)/1000           AS espera_fila_s,
+       SUM(ios.page_lock_wait_count)               AS esperas_pag,
+       SUM(ios.page_lock_wait_in_ms)/1000          AS espera_pag_s,
+       SUM(ios.leaf_insert_count + ios.leaf_update_count
+           + ios.leaf_delete_count)                AS modificaciones
+FROM   sys.dm_db_index_operational_stats(DB_ID(), NULL, NULL, NULL) ios
+WHERE  OBJECTPROPERTY(ios.object_id,'IsUserTable') = 1
+GROUP BY ios.object_id
+HAVING SUM(ios.row_lock_wait_in_ms) + SUM(ios.page_lock_wait_in_ms) > 0
+ORDER BY SUM(ios.row_lock_wait_in_ms) + SUM(ios.page_lock_wait_in_ms) DESC;
+\end{lstlisting}
+
+\subsection{Disparadores (base \cod{Cenusa})}
+
+\begin{lstlisting}[style=sql]
+USE Cenusa;
+
+SELECT COUNT(*) AS triggers_tabla,
+       SUM(CASE WHEN is_disabled = 1 THEN 1 ELSE 0 END) AS deshabilitados
+FROM   sys.triggers WHERE parent_class = 1;
+
+SELECT TOP 10 OBJECT_NAME(parent_id) AS tabla, COUNT(*) AS num_triggers
+FROM   sys.triggers WHERE parent_class = 1 AND is_disabled = 0
+GROUP BY parent_id ORDER BY COUNT(*) DESC;
+
+-- Coste real, resolviendo el objeto que contiene cada sentencia
+SELECT TOP 10 ISNULL(OBJECT_NAME(st.objectid, st.dbid),'(ad-hoc)') AS objeto,
+       qs.execution_count AS ejec,
+       qs.total_worker_time/1000000 AS cpu_s,
+       qs.total_grant_kb/NULLIF(qs.execution_count,0)/1024 AS concedido_mb,
+       CAST(100.0*qs.total_used_grant_kb/NULLIF(qs.total_grant_kb,0)
+            AS DECIMAL(5,1)) AS pct_aprov,
+       qs.total_logical_reads/NULLIF(qs.execution_count,0) AS lecturas_media
+FROM   sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+WHERE  DB_NAME(st.dbid) = 'Cenusa'
+ORDER BY qs.total_worker_time DESC;
+\end{lstlisting}
+
+\subsection{Índices ausentes}
+
+\begin{lstlisting}[style=sql]
+SELECT TOP 8
+       DB_NAME(id.database_id) AS bd,
+       OBJECT_NAME(id.object_id, id.database_id) AS tabla,
+       CAST(igs.avg_total_user_cost * igs.avg_user_impact
+            * (igs.user_seeks + igs.user_scans) AS BIGINT) AS impacto,
+       igs.user_seeks, id.equality_columns, id.inequality_columns,
+       id.included_columns
+FROM   sys.dm_db_missing_index_group_stats igs
+JOIN   sys.dm_db_missing_index_groups ig  ON ig.index_group_handle = igs.group_handle
+JOIN   sys.dm_db_missing_index_details id ON id.index_handle = ig.index_handle
+ORDER BY impacto DESC;
+\end{lstlisting}
+
+\subsection{Carga real del SQL Agent}
+\label{sql:ocupacion}
+
+\begin{lstlisting}[style=sql]
+-- Cuantas planificaciones sub-diarias hay, y a que ritmo
+SELECT CASE s.freq_subday_type WHEN 2 THEN 'segundos' WHEN 4 THEN 'minutos'
+            WHEN 8 THEN 'horas' ELSE 'otro' END AS unidad,
+       s.freq_subday_interval AS cada_n, COUNT(*) AS num_jobs
+FROM   msdb.dbo.sysjobs j
+JOIN   msdb.dbo.sysjobschedules js ON js.job_id = j.job_id
+JOIN   msdb.dbo.sysschedules    s  ON s.schedule_id = js.schedule_id
+WHERE  j.enabled = 1 AND s.enabled = 1 AND s.freq_subday_interval > 0
+GROUP BY s.freq_subday_type, s.freq_subday_interval
+ORDER BY unidad, cada_n;
+\end{lstlisting}
+
+\begin{lstlisting}[style=sql]
+-- Jobs que tardan mas que su propio intervalo de planificacion
+WITH prog AS (
+  SELECT j.job_id, j.name,
+         s.freq_subday_interval * CASE s.freq_subday_type
+             WHEN 2 THEN 1 WHEN 4 THEN 60 WHEN 8 THEN 3600 ELSE 60 END AS intervalo_s
+  FROM   msdb.dbo.sysjobs j
+  JOIN   msdb.dbo.sysjobschedules js ON js.job_id = j.job_id
+  JOIN   msdb.dbo.sysschedules    s  ON s.schedule_id = js.schedule_id
+  WHERE  j.enabled = 1 AND s.enabled = 1 AND s.freq_subday_interval > 0
+),
+dur AS (
+  SELECT h.job_id,
+         AVG(h.run_duration/10000*3600 + (h.run_duration/100%100)*60
+             + h.run_duration%100) AS media_s,
+         MAX(h.run_duration/10000*3600 + (h.run_duration/100%100)*60
+             + h.run_duration%100) AS max_s,
+         COUNT(*) AS ejec
+  FROM   msdb.dbo.sysjobhistory h
+  WHERE  h.step_id = 0
+    AND  h.run_date >= CONVERT(INT, CONVERT(VARCHAR(8), DATEADD(DAY,-7,GETDATE()), 112))
+  GROUP BY h.job_id
+)
+SELECT TOP 20 p.name AS job, p.intervalo_s, d.media_s, d.max_s, d.ejec,
+       CAST(100.0*d.media_s/NULLIF(p.intervalo_s,0) AS DECIMAL(8,1)) AS pct_ocupacion
+FROM   prog p JOIN dur d ON d.job_id = p.job_id
+WHERE  d.max_s > p.intervalo_s
+ORDER BY pct_ocupacion DESC;
+\end{lstlisting}
+
+\begin{lstlisting}[style=sql]
+-- Ejecuciones largas: cuando empezaron y cuando acabaron de verdad
+SELECT TOP 25 j.name AS job,
+       msdb.dbo.agent_datetime(h.run_date, h.run_time) AS empezo,
+       h.run_duration/10000*3600 + (h.run_duration/100%100)*60
+           + h.run_duration%100 AS dur_s,
+       DATEADD(SECOND, h.run_duration/10000*3600 + (h.run_duration/100%100)*60
+           + h.run_duration%100,
+           msdb.dbo.agent_datetime(h.run_date, h.run_time)) AS acabo
+FROM   msdb.dbo.sysjobhistory h
+JOIN   msdb.dbo.sysjobs j ON j.job_id = h.job_id
+WHERE  h.step_id = 0
+  AND  h.run_date >= CONVERT(INT, CONVERT(VARCHAR(8), DATEADD(DAY,-8,GETDATE()), 112))
+  AND  h.run_duration > 3000
+ORDER BY dur_s DESC;
+\end{lstlisting}
+
+\subsection{Memoria, CPU y presión de hilos}
+
+\begin{lstlisting}[style=sql]
+SELECT total_physical_memory_kb/1024     AS ram_mb,
+       available_physical_memory_kb/1024 AS libre_mb,
+       system_memory_state_desc
+FROM   sys.dm_os_sys_memory;
+
+SELECT physical_memory_in_use_kb/1024 AS en_uso_mb,
+       process_physical_memory_low, process_virtual_memory_low
+FROM   sys.dm_os_process_memory;
+
+SELECT SUM(runnable_tasks_count) AS tareas_en_cola,
+       SUM(work_queue_count)     AS sin_hilo,
+       SUM(current_tasks_count)  AS tareas_totales,
+       SUM(active_workers_count) AS workers,
+       MAX(load_factor) AS load_factor_max, AVG(load_factor) AS load_factor_medio
+FROM   sys.dm_os_schedulers WHERE status = 'VISIBLE ONLINE';
+\end{lstlisting}
+
+\begin{lstlisting}[style=sql]
+-- CPU de SQL Server frente a la del resto del sistema (ultimos ~256 min)
+SELECT TOP 10
+       DATEADD(ms, -1*((SELECT ms_ticks FROM sys.dm_os_sys_info) - y.[timestamp]),
+               GETDATE()) AS hora,
+       y.cpu_sql, 100 - y.cpu_libre - y.cpu_sql AS cpu_otros, y.cpu_libre
+FROM (
+  SELECT x.[timestamp],
+         x.record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]',
+                        'int') AS cpu_libre,
+         x.record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]',
+                        'int') AS cpu_sql
+  FROM (SELECT [timestamp], CONVERT(XML, record) AS record
+        FROM   sys.dm_os_ring_buffers
+        WHERE  ring_buffer_type = 'RING_BUFFER_SCHEDULER_MONITOR'
+          AND  record LIKE '%<SystemHealth>%') AS x
+) AS y
+ORDER BY y.[timestamp] DESC;
+\end{lstlisting}
+
+\subsection{Disco, logs y TempDB}
+
+\begin{lstlisting}[style=sql]
+SELECT TOP 8 DB_NAME(vfs.database_id) AS bd, mf.name AS fichero, mf.type_desc,
+       vfs.num_of_reads,
+       vfs.io_stall_read_ms  / NULLIF(vfs.num_of_reads , 0) AS ms_por_lectura,
+       vfs.num_of_writes,
+       vfs.io_stall_write_ms / NULLIF(vfs.num_of_writes, 0) AS ms_por_escritura
+FROM   sys.dm_io_virtual_file_stats(NULL, NULL) AS vfs
+JOIN   sys.master_files AS mf
+       ON mf.database_id = vfs.database_id AND mf.file_id = vfs.file_id
+WHERE  vfs.num_of_reads > 10000
+ORDER BY ms_por_lectura DESC;
+
+SELECT 'Grupo' AS bd, COUNT(*) AS vlfs,
+       SUM(CASE WHEN vlf_active = 1 THEN 1 ELSE 0 END) AS activos,
+       CAST(AVG(vlf_size_mb) AS DECIMAL(10,1)) AS tam_medio_mb,
+       CAST(SUM(vlf_size_mb)/1024 AS DECIMAL(10,1)) AS log_total_gb
+FROM   sys.dm_db_log_info(DB_ID('Grupo'));
+
+SELECT SUM(version_store_reserved_page_count)*8/1024   AS version_store_mb,
+       SUM(user_object_reserved_page_count)*8/1024     AS objetos_usuario_mb,
+       SUM(internal_object_reserved_page_count)*8/1024 AS objetos_internos_mb,
+       SUM(unallocated_extent_page_count)*8/1024       AS libre_mb
+FROM   tempdb.sys.dm_db_file_space_usage;
+\end{lstlisting}
+
+\subsection{Grupo de disponibilidad}
+
+\begin{lstlisting}[style=sql]
+SELECT ag.name AS grupo, ar.replica_server_name AS replica,
+       ar.availability_mode_desc AS modo_commit, ar.failover_mode_desc,
+       ars.role_desc AS rol, ars.synchronization_health_desc AS salud
+FROM   sys.availability_groups ag
+JOIN   sys.availability_replicas ar ON ar.group_id = ag.group_id
+LEFT JOIN sys.dm_hadr_availability_replica_states ars
+       ON ars.replica_id = ar.replica_id;
+
+SELECT DB_NAME(drs.database_id) AS bd, ar.replica_server_name AS replica,
+       drs.synchronization_state_desc AS estado,
+       drs.log_send_queue_size AS cola_envio_kb,
+       drs.redo_queue_size AS cola_redo_kb, drs.redo_rate,
+       drs.secondary_lag_seconds AS retraso_s
+FROM   sys.dm_hadr_database_replica_states drs
+JOIN   sys.availability_replicas ar ON ar.replica_id = drs.replica_id;
+\end{lstlisting}
+
+\subsection{Métricas de hipervisor (API interna de DPA)}
+
+No son consultas SQL: DPA las obtiene del vCenter y las expone en su API
+interna, la misma que consume la pestaña \emph{Virtualization}. Requieren
+cookie de sesión web, \textbf{no} el token de la API pública documentada, que
+es puramente administrativa y no expone métricas de rendimiento.
+
+\begin{lstlisting}[style=sql]
+# Instancias y su vinculacion con la maquina virtual
+GET /iwc/rest/databases
+    -> id, name, linkedToVm, virtualMachineName,
+       virtualMachineCurrentHostName, vsphereServerName
+
+# Catalogo de metricas en modo Virtualization (pm=V)
+GET /iwc/rest/databases/{id}/metrics/categories
+      ?startTime=...&endTime=...&pm=V&require=metrics,status
+
+# Serie temporal de una metrica concreta
+GET /iwc/rest/databases/{id}/metrics/data
+      ?metrics=vmReadyTime&startTime=...&endTime=...
+      &useResourceGranularities=true&baseline=false
+    -> data[0].series[n].dataPoints[].{time,value}
+
+# Metricas relevantes para descartar contencion del host:
+#   CPU     : vmReadyTime, vmCpuCoStopPercent, hostCpuUsagePercent,
+#             vmCpuUsagePercent, vmCpuUsed, vmCpuUsageMhz
+#   Memoria : vmPercentBallooned, vmBalloonSize, vmMemorySwapInRate,
+#             vmMemorySwapOutRate, vmMemoryGranted, vmMemoryActive,
+#             hostMemoryUsage
+#   Disco   : hostMaxTotalDiskLatency, hostTotalReadLatency,
+#             hostTotalWriteLatency (estas dos, por dispositivo)
+\end{lstlisting}
+
+% =====================================================================
+\newpage
+\section{Evidencia}
+
+Salida literal de la herramienta de consultas de DPA contra SRVPRORPDB01,
+el 29 de octubre de 2026, conectada como \cod{dpaMONITOR}. Sin editar.
+
+\subsection{Configuración}
+
+\begin{lstlisting}[style=salida]
+SELECT name, value_in_use FROM sys.configurations WHERE name IN (...)
+Time: 94 ms
+
+name                             value_in_use
+cost threshold for parallelism   100
+max degree of parallelism        8
+max server memory (MB)           96896
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT cpu_count, numa, page life expectancy, memoria ...
+Time: 47 ms
+
+nucleos   numa   ple_s   sql_usa_mb   ram_fisica_mb   ram_libre_mb
+16        2      28      96896        131071          25657
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT sqlserver_start_time, dias_encendido, virtual_machine_type_desc ...
+Time: 16 ms
+
+sqlserver_start_time      dias_encendido   virtual_machine_type_desc   schedulers
+2026-10-02 14:25:05.69    27               HYPERVISOR                  16
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT name AS bd, compatibility_level, is_read_committed_snapshot_on ...
+Time: 140 ms
+
+bd              compat  rcsi   snapshot_iso  auto_upd_stats  query_store  auto_upd_async
+ContaAlaplana   160     false  OFF           true            false        false
+ContaSTN        160     false  OFF           true            false        false
+ContaVitaCer    160     false  OFF           true            false        false
+D365Eventos     160     false  OFF           true            true         false
+Grupo           160     false  OFF           true            false        false
+IFR             160     false  OFF           true            false        false
+Informatica     160     false  OFF           true            false        false
+OMS             160     false  OFF           true            false        false
+
+USE Grupo; SELECT name, value, is_value_default FROM sys.database_scoped_configurations
+Time: 32 ms
+
+opcion                                     value  value_for_secondary  is_value_default
+ACCELERATED_PLAN_FORCING                   true   null                 true
+ASYNC_STATS_UPDATE_WAIT_AT_LOW_PRIORITY    false  null                 true
+LEGACY_CARDINALITY_ESTIMATION              false  null                 true
+MAXDOP                                     0      null                 true
+OPTIMIZE_FOR_AD_HOC_WORKLOADS              false  null                 true
+PARAMETER_SNIFFING                         true   null                 true
+QUERY_OPTIMIZER_HOTFIXES                   false  null                 true
+\end{lstlisting}
+
+\subsection{Esperas}
+
+\begin{lstlisting}[style=salida]
+SELECT TOP 6 wait_type, wait_time_ms/1000, pct FROM sys.dm_os_wait_stats ...
+Time: 15 ms
+
+wait_type                   espera_s     pct
+CXCONSUMER                  45504691     27,55
+CXSYNC_PORT                 31022696     18,79
+CXPACKET                    20425851     12,37
+SOS_SCHEDULER_YIELD         12906011      7,82
+LATCH_EX                     9896832      5,99
+HADR_NOTIFICATION_DEQUEUE    4645761      2,81   <- espera inactiva
+\end{lstlisting}
+
+\subsection{Paralelismo innecesario}
+
+\begin{lstlisting}[style=salida]
+SELECT TOP 12 ... WHERE total_worker_time > total_elapsed_time * 1.5
+Time: 1670 ms
+
+bd      ejec  cpu_s  dur_s  factor_par  conc_mb  pct_aprov  filas  sentencia
+Grupo    358   5535   2167      2.55        71      55.4       0   insert into StnERPArticuloLoteLinea (...)
+Grupo    358   5370   2043      2.63        71      55.4       0   insert into StnERPArticuloLoteLinea (...)
+Grupo    358   5349   2017      2.65        71      55.4       0   insert into StnERPArticuloLoteLinea (...)
+Grupo    357   4963   2094      2.37        70      55.7       0   insert into StnERPArticuloLoteLinea (...)
+Grupo    358   4960   1986      2.50        70      55.7       0   insert into StnERPArticuloLoteLinea (...)
+Grupo    358   4819   1859      2.59        70      55.7       0   insert into StnERPArticuloLoteLinea (...)
+Grupo   1122   1340    376      3.57        33      49.2       0   update stnERPORDENPREPARACION set Estado = case ...
+Grupo   1122    919    328      2.80        33      46.6       0   update stnERPORDENPREPARACION set Estado = 2 ...
+null     591   1993    898      2.22        27      55.9       3   delete b from [D365Eventos]..STNAppSuiteInventTrans
+null     597   1255    597      2.10        25      58.0       3   delete b from [D365Eventos]..STNAppSuiteInventTrans
+null     595   1181    627      1.88        18      43.2       2   delete b from [D365Eventos]..InventTransOriginBi...
+null     164    581    291      2.00       506      67.0       1   Select a.SourceKey FROM OMS..InventTransOrigin...
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT TOP 15 ... ORDER BY total_grant_kb DESC
+Time: ---
+
+bd       ejec      conc_mb  usado_mb  pct_aprov  factor  filas  sentencia
+Cenusa    432729       58       0        1.5      0.48     0    update entFACTURA set atrBaseBruta = ...
+Cenusa    432728       58       0        1.5      0.49     0    update entFACTURA set atrBaseBruta = ...
+Cenusa   1699520        2       0       40.6      0.48     0    update entFACTURA set atrCostefactura = ...
+Cenusa   1722472        1       0        0.0      0.92     0    select @TestPendiente = entPEDIDO_DETALLE...
+Grupo    5631854        1       0        0.0      0.45     0    UPDATE T SET modified_date_time = GETDATE()...
+Grupo     127838       42      28       67.3      0.70 103528   INSERT INTO dbo.SHIPPING_LOAD_COPIA (...)
+Grupo    5260024        1       0        0.0      0.45     0    update entALMACEN_LOTE set atrAlPendiente...
+\end{lstlisting}
+
+\subsection{Estadísticas}
+
+\begin{lstlisting}[style=salida]
+USE Grupo; SELECT TOP 12 ... FROM sys.stats CROSS APPLY dm_db_stats_properties
+Time: 22094 ms
+
+tabla                              last_updated          filas    pct_mu  modificaciones
+entEFECTO_FacturasCobradas365      2026-10-29 02:41:30  1184877    11,8      31476588
+entEFECTO_FacturasCobradas365      2026-10-29 02:41:28  1184877    11,8      21329427
+STN_ERP_ANALISIS_VENTAS_PEDIDOS    2026-10-29 02:48:51  6460673     1,4      12940889
+STN_ERP_ANALISIS_VENTAS_PEDIDOS    2026-10-29 02:48:58  6460673     1,4      12940889
+
+USE Cenusa; (misma consulta)
+Time: 10743 ms
+
+AUDITORIA2                         2026-10-29 02:54:54 29708129     1,0      89149199
+entALBARAN_IVA                     2026-10-29 02:55:15 20384782     1,1         81387
+entPEDIDO                          2026-10-29 02:56:35   920167     4,4        167803
+\end{lstlisting}
+
+\subsection{Escalado de bloqueos}
+
+\begin{lstlisting}[style=salida]
+USE Grupo; SELECT TOP 15 ... FROM sys.dm_db_index_operational_stats
+Time: 13047 ms
+
+tabla                  escalados  intentos  esp_fila  esp_fila_s  esp_pag  esp_pag_s
+entEMPRESA                  4066   1257751     16919       83106     7457      55258
+entORDENCARGA              16398   1246542      8118       54744     3472      25453
+entALMACEN_LOTE             1840    308481       788        5367     3474      20023
+entPEDIDO                  18464   2110454      1356        5556     5314      14226
+entPEDIDO_DETALLE          14044   2400993      2004        6938     2563       7033
+entMOVIMIENTO              11281   1508432       170        6232      371       2845
+entOC_DETALLE               2761   1535207       625        2211     1478       6778
+T_Palets                  193154   1513608      7345         551     2012       4259
+STN_720_DATOS_PESADA       17140     69221       421         258      452       1835
+StnEDIPEDIDO               15832    276422      2010         751      813       1092
+APP_PA_StockArticulo       68447   6753289       458         143        0          0
+ENVIO_MAILS                42475   1520206       432         268       13          3
+entFICHA                    5961      6842        56          86       45        421
+\end{lstlisting}
+
+\subsection{Cenusa}
+
+\begin{lstlisting}[style=salida]
+SELECT d.name, compatibility_level, rcsi, async_stats, state_desc, tamano_mb
+Time: 94 ms
+
+bd       compat  rcsi   async_stats  estado   tamano_mb
+Cenusa   160     false  false        ONLINE   47270
+
+SELECT COUNT(*) FROM sys.triggers WHERE parent_class = 1
+Time: 15 ms
+
+triggers_tabla   deshabilitados
+575              4
+
+SELECT TOP 8 OBJECT_NAME(parent_id), COUNT(*) ... GROUP BY parent_id
+Time: 32 ms
+
+tabla                    num_triggers
+entEMPRESA                      9
+entALBARAN                      8
+entMOVIMIENTO                   8
+entPEDIDO                       8
+entPEDIDO_DETALLE               8
+entARTICULO                     6
+entOC_DETALLE                   6
+entARTICULO_UBICACION           5
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT TOP 10 ... WHERE DB_NAME(st.dbid) = 'Cenusa' ORDER BY total_worker_time DESC
+Time: 344 ms
+
+objeto                                           ejec     cpu_s  dur_s  conc_mb  pct   lecturas
+ACTUALIZA_EMPRESAS_DIRECCIONES_FICHAS_POR_PROV     336      4828   4208     1171  17.4   500544
+tU_entALBARAN                                    21365      2927   4829        0  null    31135
+tU_entALBARAN                                  1700015      1851   3861        2  40.6        0
+tU_entMOVIMIENTO                                212512      1884   4008        1  51.5       16
+tU_entMOVIMIENTO                                212512      1860   3963        1  51.5       16
+tU_entMOVIMIENTO                                212512      1757   3699        1   0.0       16
+tU_entMOVIMIENTO                                212512      1691   3599        1   0.0       16
+tU_entMOVIMIENTO                                212512      1588   4218        1   0.0       35
+tU_entMOVIMIENTO                                212512      1488   3353        1   0.0       --
+\end{lstlisting}
+
+\subsection{SQL Agent}
+
+\begin{lstlisting}[style=salida]
+SELECT ... COUNT(*) FROM msdb.dbo.sysschedules WHERE freq_subday_interval > 0
+Time: 141 ms
+
+unidad      cada_n  jobs     unidad    cada_n  jobs     unidad   cada_n  jobs
+segundos        10     3     minutos       10     6     horas         1    24
+segundos        30     5     minutos       15     9     horas         2     8
+segundos        75     1     minutos       18     1     horas         3     3
+segundos        90     2     minutos       30    10     horas         4     4
+segundos       100     2     minutos       60     1     horas      6-12    17
+minutos          1     6                                           otro  1-10     4
+minutos          2     7                                           ------------------
+minutos          3    10                                           TOTAL          140
+minutos          4     4
+minutos          5    13
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+WITH prog AS (...), dur AS (...) SELECT TOP 20 ... WHERE d.max_s > p.intervalo_s
+Time: 2484 ms
+
+job                                     intervalo_s  media_s  max_s  ejec    pct
+D365_SINCRONIZAR_OMS_DISP_MAX                   120      142    671   2380  118,3
+D365_SYNC_TRANSFORMAR_DISP_MAX                  180      173    689   1977   96,1
+D365_ENVIO_RECEPCIONES                           60       47    913   6202   78,3
+stnSCALE_COPIA_SHIPPING_LOAD                     10        7    476  34670   70,0
+D365_SINCRONIZAR_DATOS_COMPRAS                  300      200    707   1215   66,7
+D365_SYNC_MANTENER_RESERVAS_GRUPO_DESDED365     240       98    667   2532   40,8
+D365_SYNC_CREAR_PEDIDO_GRUPO_DESDED365          240       97   1737   2600   40,4
+STN_MARCAR_LINEAS_PREPARADO_TRASLADADO          600      230   2336   1043   38,3
+STN_SINCRONIZASTOCKRUMBO                        300      114    718   1433   38,0
+stnSCALE_720_DATOS_PESADA_ACTUALIZA_MUELLE       10        3     80  29830   30,0
+D365_SYNC_CREAR_OC_GRUPO_DESDE_D365             240       68    641   2676   28,3
+stnSCALE_INT_ENT_PRODUCCION                      30        5   1781  19432   16,7
+Interface APP WEB                               120       16   4590   5346   13,3
+STNAUTO_AUTOMATIZAR_ALBARANEADO                  60        8   1161  10487   13,3
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT TOP 20 j.name, AVG(run_duration), MAX(run_duration) ... (7 dias)
+Time: 1158 ms
+
+job                                        ejec  dur_media_s  dur_max_s  fallos
+IndexOptimize - USER_DATABASES - Weekend      1        50360      50360       0
+RAPPEL_ZCALCULOSFACTURAS                      7         8890      41020       0
+TAREAS NOCTURNAS STN                          8         8801      29672       0
+STN_MANTENER_ARTICULOS_CONSUMOS               7         8217      11323       0
+RECOSTRUYE STOCK DOMINGO                      1         7079       7079       0
+BAJA_RIESGOS                                  8         6766       8129       0
+STN_ERP_CARGAR_ANALISIS_VENTAS_HISTORICO      8         3121       3960       0
+STN_AVISO_DISPONIBLE_FASE                    32         2609       6065       0
+IN3 RUMBO INVENTARIO                          7         2259       3136       0
+DatabaseBackup - GRUPO_DATABASES - FULL      15         2202       2592       0
+D365_SYNC_BORRAR_OMS                         96         1133       1466       2
+ACTUALIZAR FOTO CARTERA ARTICULO              6         1072       5067       0
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT ... WHERE j.name LIKE '%IndexOptimize%' ... (8 dias)
+Time: 4810 ms
+
+job                                        empezo                 dur_s   acabo
+IndexOptimize - USER_DATABASES - Daily     2026-10-29 02:30:00     3418   2026-10-29 03:26:58
+IndexOptimize - USER_DATABASES - Daily     2026-10-28 02:30:01     3403   2026-10-28 03:26:44
+IndexOptimize - USER_DATABASES - Daily     2026-10-27 02:30:00     3498   2026-10-27 03:28:18
+IndexOptimize - USER_DATABASES - Daily     2026-10-26 02:30:01    23366   2026-10-26 08:59:27  <--
+IndexOptimize - USER_DATABASES - Daily     2026-10-25 02:30:00      562   2026-10-25 02:39:22
+IndexOptimize - USER_DATABASES - Daily     2026-10-25 02:30:00  -343599444  2015-12-05 06:12:36  <-- corrupto
+IndexOptimize - USER_DATABASES - Weekend   2026-10-24 02:30:00    50360   2026-10-24 16:29:20  <--
+IndexOptimize - USER_DATABASES - Daily     2026-10-23 02:30:08     3606   2026-10-23 03:30:14
+IndexOptimize - USER_DATABASES - Daily     2026-10-22 02:30:00     5102   2026-10-22 03:55:02
+DBA_CheckDB                                2026-10-25 18:00:02     1535   2026-10-25 18:25:37
+\end{lstlisting}
+
+\subsection{Recursos, hipervisor y alta disponibilidad}
+
+\begin{lstlisting}[style=salida]
+SELECT ram_mb, libre_mb, system_memory_state_desc FROM sys.dm_os_sys_memory
+Time: 31 ms
+
+ram_mb    libre_mb   system_memory_state_desc
+131071    25657      Available physical memory is high
+
+SELECT en_uso_mb, process_physical_memory_low ... FROM sys.dm_os_process_memory
+Time: 16 ms
+
+en_uso_mb   process_physical_memory_low   process_virtual_memory_low
+97315       false                         false
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT SUM(runnable_tasks_count), SUM(work_queue_count) ... dm_os_schedulers
+Time: 0 ms
+
+tareas_en_cola  sin_hilo  tareas_totales  workers  load_factor_max  load_factor_medio
+5               0         151             146      19               13
+
+SELECT TOP 10 ... FROM sys.dm_os_ring_buffers (RING_BUFFER_SCHEDULER_MONITOR)
+Time: 62 ms
+
+hora                      cpu_sql   cpu_otros   cpu_libre
+2026-10-29 11:35:00.503        65           4          31
+2026-10-29 11:36:00.697        75           6          19
+2026-10-29 11:37:00.877        83           5          12
+2026-10-29 11:38:01.063        77           4          19
+2026-10-29 11:39:01.253        67           3          30
+2026-10-29 11:40:01.440        59           3          38
+2026-10-29 11:41:01.627        80           3          17
+2026-10-29 11:42:01.813        79           3          18
+2026-10-29 11:43:02.003        76           3          21
+2026-10-29 11:44:02.190        61           3          36
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT TOP 8 ... FROM sys.dm_io_virtual_file_stats(NULL, NULL) ...
+Time: 47 ms
+
+bd              fichero            tipo   lecturas     ms/lec   escrituras     ms/esc
+ContaAlaplana   IN3ContaTpl_Log    LOG       65822          9      1063679           0
+ContaSTN        IN3ContaTpl_Log    LOG      202724          7      3386531           0
+ContaVitaCer    IN3Co...           LOG         ...          8          ...           1
+D365Eventos     D365Eventos_log    LOG         ...          9          ...           1
+Informatica     Informatica_Log    LOG         ...          8          ...          12
+OMS             OMS_log            LOG         ...          8          ...           1
+Grupo           In3Tplnew_log      LOG     9557386          7    281926025           2
+IFR             IFR_log            LOG    22022516          7    363247671           2
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT ... FROM sys.dm_db_log_info(DB_ID(...))  /  tempdb.sys.dm_db_file_space_usage
+Time: 31 ms + 16 ms
+
+bd        vlfs   activos   tam_medio_mb   log_total_gb
+Cenusa      97        82          110.0           10.4
+Grupo     1940        12           63.9          121.0
+IFR        127         6         1465.7          181.8
+
+version_store_mb   objetos_usuario_mb   objetos_internos_mb   libre_mb
+31                 181                  1268                  430726
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+GET /iwc/rest/databases   (vinculacion con vCenter)
+
+id  name                          linkedToVm  vm             host ESXi     vcsa
+3   AQUILES                       true        Aquiles        10.150.0.2    vcsa.central.local
+2   PROMETEO                      true        Prometeo       10.150.0.9    vcsa.central.local
+5   SRVPBI                        true        SRVPBI         10.150.0.9    vcsa.central.local
+1   SRVPRORPDB01 via ATENEA2      true        SRVPRORPDB01   10.150.0.8    vcsa.central.local
+4   SRVPROSCDB1 via SCALEPRODBAO  true        SRVPROSCDB1    10.150.0.27   vcsa.central.local
+
+GET /iwc/rest/databases/1/metrics/data?metrics=...  (granularidad 600 s, 7 puntos)
+
+metrica                   serie           media       maximo
+vmReadyTime               SRVPRORPDB01      0,094       0,13
+vmCpuCoStopPercent        SRVPRORPDB01      0           0
+vmPercentBallooned        SRVPRORPDB01      0           0
+vmBalloonSize             SRVPRORPDB01      0           0
+vmMemorySwapInRate        SRVPRORPDB01      0           0
+vmMemorySwapOutRate       SRVPRORPDB01      0           0
+vmMemoryGranted           SRVPRORPDB01    130778      130778
+vmMemoryActive            SRVPRORPDB01     71,16       74,47
+vmCpuUsagePercent         SRVPRORPDB01     96,38      114,80
+hostCpuUsagePercent       10.150.0.8       40,16       45,52
+hostMemoryUsage           10.150.0.8       39,35       39,37
+hostMaxTotalDiskLatency   10.150.0.8       59         211        <- artefacto
+
+Desglose por dispositivo del host 10.150.0.8 -- descarta el artefacto anterior
+
+dispositivo (DGC Fibre Channel Disk)        ms lectura   ms escritura
+naa.6006016051bc51001367656699695a40            0,0          0,0
+naa.6006016051bc51005f6d65661aaa6803            0,0          0,0
+naa.6006016051bc51002c6b6566ef2fd7fe            0,1          0,9
+naa.6006016051bc51008f6f6566a55ec291            0,5          0,0
+naa.6006016051bc51008ec6916839933029            0,6          0,1
+naa.6006016051bc5100086f65669cc587fa            0,8          0,7
+naa.6006016051bc5100a1bf9168335813e0            0,8          1,3
+\end{lstlisting}
+
+\begin{lstlisting}[style=salida]
+SELECT ag.name, ar.replica_server_name, ar.availability_mode_desc ...
+Time: 1844 ms
+
+grupo        replica        modo_commit            failover  rol        salud
+AG-ATENEA2   SRVPRORPDB01   ASYNCHRONOUS_COMMIT    MANUAL    PRIMARY    HEALTHY
+AG-ATENEA2   SRVPRORPDB02   ASYNCHRONOUS_COMMIT    MANUAL    SECONDARY  HEALTHY
+
+SELECT DB_NAME(drs.database_id), drs.synchronization_state_desc ...
+Time: 312 ms
+
+bd         replica        estado         cola_envio  cola_redo  tasa_redo  retraso_s
+ContaSTN   SRVPRORPDB02   SYNCHRONIZING          60          0      33201          0
+Grupo      SRVPRORPDB02   SYNCHRONIZING          60         31      65609          0
+IFR        SRVPRORPDB02   SYNCHRONIZING          60       2315      49590          0
+OMS        SRVPRORPDB02   SYNCHRONIZING           0         69      33049          0
+\end{lstlisting}
+
+% =====================================================================
+\newpage
+\section{Anexo: planificaciones de menos de una hora}
+\label{sec:anexo}
+
+Hoja de trabajo para el escalonado (acción 7). Solo las planificaciones
+activas con repetición en segundos o minutos; quedan fuera las horarias y las
+de una vez al día.
+
+\begin{longtable}{p{8.3cm}rp{1.2cm}p{1.5cm}p{1.5cm}}
+\toprule
+\textbf{Job} & \textbf{Cada} & \textbf{Unid.} & \textbf{Desde} & \textbf{Hasta} \\
+\midrule
+\endhead
+stnSCALE\_720\_DATOS\_PESADA & 10 & seg & 00:00 & 23:59 \\
+stnSCALE\_720\_DATOS\_PESADA\_ACTUALIZA\_MUELLE & 10 & seg & 05:45 & 22:00 \\
+stnSCALE\_COPIA\_SHIPPING\_LOAD & 10 & seg & 00:00 & 23:59 \\
+stnSCALE\_720\_DATOS\_PESADA\_ACTUALIZA\_TELEFONO & 30 & seg & 05:50 & 22:00 \\
+stnSCALE\_INT\_ENT\_expediciones & 30 & seg & 05:30 & 22:30 \\
+stnSCALE\_INT\_ENT\_expediciones & 30 & seg & 22:31 & 05:29 \\
+stnSCALE\_INT\_ENT\_PRODUCCION & 30 & seg & 05:30 & 22:30 \\
+stnSCALE\_INT\_ENT\_PRODUCCION & 30 & seg & 22:31 & 05:29 \\
+stnSCALE\_INT\_ENT\_ORDENCARGA & 75 & seg & 05:30 & 22:00 \\
+stnSCALE\_INT\_ENT & 90 & seg & 05:30 & 22:30 \\
+stnSCALE\_INT\_ENT\_AJUSTES & 90 & seg & 05:30 & 22:30 \\
+stnSCALE\_INT\_ENT\_ORDENCARGA & 100 & seg & 22:01 & 05:29 \\
+stnSCALE\_INT\_ENT\_PARRILLA & 100 & seg & 00:00 & 23:59 \\
+\midrule
+D365\_ENVIO\_RECEPCIONES & 1 & min & 05:00 & 23:59 \\
+STNAUTO\_AUTOMATIZAR\_ALBARANEADO & 1 & min & 00:00 & 23:59 \\
+STNSCALE\_ERRORES\_ILSPRO & 1 & min & 00:00 & 23:59 \\
+stnSCALE\_INT\_SAL & 1 & min & 05:30 & 22:30 \\
+stnSCALE\_INT\_SAL\_ORDENCARGA & 1 & min & 05:30 & 22:30 \\
+stnSCALE\_INT\_SAL\_PRODUCCION & 1 & min & 05:30 & 22:30 \\
+D365\_SINCRONIZAR\_OMS\_DISP\_MAX & 2 & min & 05:00 & 23:59 \\
+Interface APP WEB & 2 & min & 00:00 & 23:59 \\
+RECALCULAR\_ALBARANES & 2 & min & 00:00 & 23:59 \\
+REENVIAR ARTICULOS & 2 & min & 00:00 & 23:59 \\
+REVISAR BLOQUEOS DE 7:30 a 8:30 & 2 & min & 06:00 & 09:00 \\
+stn\_regenera\_op\_modificadas & 2 & min & 00:00 & 23:59 \\
+stnSCALE\_EnvioTransportistas & 2 & min & 00:00 & 23:59 \\
+ASPROVA\_COPIAR\_TRABAJO\_REAL & 3 & min & 00:00 & 23:59 \\
+D365\_SYNC\_CREAR\_PEDIDO\_BLOQUEO\_DESDE365 & 3 & min & 00:00 & 23:59 \\
+D365\_SYNC\_TRANSFORMAR\_DISP\_MAX & 3 & min & 05:00 & 23:59 \\
+PREVISION\_CARGA\_CARGADATOS & 3 & min & 06:00 & 22:00 \\
+STN\_OC\_ENPROCESO\_CARGA\_CARGADATOS & 3 & min & 00:00 & 23:59 \\
+STNSCALE\_ERRORES & 3 & min & 00:00 & 23:59 \\
+stnSCALE\_INT\_ENT & 3 & min & 22:31 & 05:29 \\
+stnSCALE\_INT\_ENT\_AJUSTES & 3 & min & 22:31 & 05:29 \\
+stnSCALE\_INT\_SAL & 3 & min & 22:31 & 05:29 \\
+stnSCALE\_INT\_SAL\_PRODUCCION & 3 & min & 22:31 & 05:29 \\
+D365\_SYNC\_CREAR\_OC\_GRUPO\_DESDE\_D365 & 4 & min & 00:00 & 23:59 \\
+D365\_SYNC\_CREAR\_PEDIDO\_GRUPO\_DESDED365 & 4 & min & 00:00 & 23:59 \\
+D365\_SYNC\_MANTENER\_RESERVAS\_GRUPO\_DESDED365 & 4 & min & 00:00 & 23:59 \\
+stnscale\_albaranear\_mensajeria & 4 & min & 18:00 & 00:15 \\
+D365\_SINCRONIZAR\_DATOS\_COMPRAS & 5 & min & 07:00 & 22:00 \\
+D365\_SYNC\_MANTENER\_PEDIDO\_GRUPO\_DESDED365 & 5 & min & 00:00 & 23:59 \\
+DESACCIONAR ORDENES & 5 & min & 05:00 & 23:00 \\
+RECALCULAR\_PEDIDOS & 5 & min & 08:00 & 20:59 \\
+REVISAR BLOQUEOS DE 7:30 a 8:30 & 5 & min & 16:55 & 17:40 \\
+REVISAR BLOQUEOS DE 7:30 a 8:30 & 5 & min & 01:55 & 02:20 \\
+STN\_ERP\_StnCRMSOLICITUD\_AprobacionAuto & 5 & min & 08:00 & 20:00 \\
+STN\_SINCRONIZASTOCKRUMBO & 5 & min & 06:00 & 22:45 \\
+stnSCALE\_720\_DATOS\_PESADA\_ACTUALIZA\_MUELLE & 5 & min & 22:00 & 05:44 \\
+stnSCALE\_720\_DATOS\_PESADA\_ACTUALIZA\_TELEFONO & 5 & min & 22:00 & 05:49 \\
+stnSCALE\_720\_DATOS\_PESADA\_BORRADO & 5 & min & 00:00 & 23:59 \\
+stnSCALE\_EnvioMosaicoCarga & 5 & min & 00:00 & 23:59 \\
+stnSCALE\_INT\_SAL\_ORDENCARGA & 5 & min & 22:31 & 05:29 \\
+ACTUALIZA\_OPERACION & 10 & min & 00:00 & 23:59 \\
+CENUSA - ARREGLA SERVICO OC CENUSA & 10 & min & 00:00 & 23:59 \\
+Copiar SN\_PARRILLA\_LOG a Grupo & 10 & min & 00:00 & 23:59 \\
+D365\_SYNC\_DATOS\_CLIENTE & 10 & min & 00:00 & 23:59 \\
+STN\_MARCAR\_LINEAS\_PREPARADO\_TRASLADADO & 10 & min & 00:00 & 23:59 \\
+stnscale\_albaranear\_mensajeria & 10 & min & 09:00 & 22:00 \\
+ACT Estadisticas carga LEANM & 15 & min & 06:00 & 23:59 \\
+ACTUALIZAR CODIGO UNICO & 15 & min & 08:00 & 16:45 \\
+ASIGNACION AUTOMATICA CROSS-PARAGUAS & 15 & min & 06:00 & 21:00 \\
+COMPROBAR AJUSTES STOCK & 15 & min & 00:00 & 23:59 \\
+CONTROL JOBS SINFIN & 15 & min & 00:00 & 23:59 \\
+D365\_SINCRONIZAR\_OMS\_DISP\_NORM & 15 & min & 07:00 & 23:59 \\
+PREVISION\_CARGA\_CARGADATOS & 15 & min & 22:00 & 05:59 \\
+STN\_ERP\_CARGAR\_ANALISIS\_VENTAS\_DIARIO & 15 & min & 06:00 & 23:00 \\
+stnSCALE\_Revisar\_pallets\_SCALE & 15 & min & 00:00 & 23:59 \\
+D365\_SYNC\_TRANSFORMAR\_DISP\_NORM & 18 & min & 05:00 & 23:59 \\
+ACTUALIZAR\_FECHACOBRO\_EFECTOS\_DESDE\_CONCILIADOS & 30 & min & 08:00 & 20:00 \\
+DesbloquearEmpresasSaldoNegativo & 30 & min & 08:00 & 19:00 \\
+IN3 RUMBO ENVIO & 30 & min & 09:00 & 18:00 \\
+stn720\_LIMPIA\_DATOS\_PESADA & 30 & min & 00:00 & 23:59 \\
+stn\_crear\_stn\_bloqueo\_material\_producido & 30 & min & 00:00 & 23:59 \\
+stn\_pzpedirproveedor\_CARGAR\_DATOS & 30 & min & 08:00 & 19:00 \\
+STNSCALE\_ANULACIONES\_INCOMPLETAS & 30 & min & 00:00 & 23:59 \\
+stnSCALE\_EnviaDatosEntregaPedido & 30 & min & 00:00 & 23:59 \\
+stnSCALE\_EnviaDatosFechaEntregaPedido & 30 & min & 00:00 & 23:59 \\
+stnSCALE\_EnviaDatosSuPedidoWickes & 30 & min & 00:00 & 23:59 \\
+D365\_RECUPERAR\_PERDIDOS\_DATAVERSE\_CLAUDIA & 60 & min & 08:30 & 23:30 \\
+\bottomrule
+\end{longtable}
+
+\noindent \textbf{80 planificaciones de menos de una hora.} A estas hay que
+sumar 56 horarias y más de 40 diarias, hasta las 140 sub-diarias citadas en
+el informe.
+
+% =====================================================================
+\newpage
+\section{Glosario}
+
+\begin{longtable}{p{4.6cm}p{11.2cm}}
+\toprule
+\textbf{Término} & \textbf{Qué significa} \\
+\midrule
+\endhead
+CXCONSUMER, CXPACKET, CXSYNC\_PORT, EXECSYNC
+  & Esperas de \emph{paralelismo}: un hilo espera a que otros hilos de la
+    misma consulta terminen su parte. Mucho tiempo aquí indica que se está
+    repartiendo trabajo que no compensa repartir \\
+SOS\_SCHEDULER\_YIELD
+  & La sesión agotó su turno de CPU y cede voluntariamente. Indica
+    competencia por procesador, no por bloqueos \\
+LCK\_M\_*
+  & Espera real por un bloqueo de objeto. \cod{LCK\_M\_SCH\_M} es bloqueo de
+    modificación de esquema, el que toman \cod{ALTER TABLE},
+    reconstrucciones de índice y \cod{TRUNCATE} \\
+PAGEIOLATCH\_SH
+  & Espera a que una página se lea de disco a memoria. Sube cuando falta
+    memoria para el \emph{buffer pool} \\
+Espera inactiva (\emph{benign wait})
+  & Espera de un hilo de fondo que no tiene trabajo. \cod{HADR\_WORK\_QUEUE},
+    \cod{HADR\_TIMER\_TASK} o \cod{SLEEP\_*}. Deben excluirse del análisis:
+    acumulan cifras enormes sin significar nada \\
+MAXDOP
+  & \emph{Max degree of parallelism}. Número máximo de núcleos que puede usar
+    una sola consulta. A nivel de base de datos, el valor 0 significa
+    «heredar el de la instancia» \\
+\emph{Cost threshold for parallelism}
+  & Coste estimado a partir del cual el optimizador considera un plan
+    paralelo. Opera sobre el coste \emph{estimado}: si la estimación es mala,
+    el umbral no protege \\
+Concesión de memoria (\emph{memory grant})
+  & Memoria que el optimizador reserva para una consulta antes de
+    ejecutarla, calculada sobre las filas que \emph{cree} que manejará. Si se
+    concede mucho y se usa poco, la estimación era errónea \\
+\emph{Page life expectancy} (PLE)
+  & Segundos que una página permanece en memoria antes de ser desalojada.
+    Valores bajos indican presión de memoria \\
+Escalado de bloqueos
+  & Conversión automática de muchos bloqueos de fila en un único bloqueo de
+    tabla, a partir de unas 5.000 filas. Ahorra memoria pero convierte una
+    escritura pequeña en un bloqueo total de la tabla \\
+RCSI (\cod{READ\_COMMITTED\_SNAPSHOT})
+  & Opción de base de datos que hace que los lectores usen versiones de fila
+    guardadas en TempDB en lugar de tomar bloqueos compartidos. Elimina la
+    mayor parte del bloqueo lector-escritor \\
+\emph{Version store}
+  & Zona de TempDB donde se guardan las versiones de fila que usa RCSI \\
+Disparador (\emph{trigger})
+  & Código que se ejecuta automáticamente ante un \cod{INSERT},
+    \cod{UPDATE} o \cod{DELETE}. \textbf{Corre dentro de la transacción que
+    lo dispara}, de modo que alarga el tiempo que esa transacción retiene sus
+    bloqueos \\
+\emph{Ready time}
+  & Porcentaje de tiempo que una máquina virtual está lista para ejecutar
+    pero espera a que el hipervisor le asigne CPU física. Por encima del
+    5\,\% indica sobresuscripción del host \\
+\emph{Co-stop}
+  & Tiempo que unos vCPU de una VM esperan a otros para poder avanzar
+    sincronizados. Relevante en máquinas con muchos vCPU \\
+\emph{Ballooning}
+  & Mecanismo por el que el hipervisor reclama memoria de una VM cuando el
+    host va justo. Si es mayor que cero, la memoria «libre» del invitado no
+    es real \\
+VLF (\emph{Virtual Log File})
+  & Fragmento interno del registro de transacciones. Demasiados ralentizan
+    arranque y recuperación; demasiado grandes impiden truncar el log con
+    precisión \\
+\bottomrule
+\end{longtable}
+
+\vfill
+\begin{center}
+\color{gris}\footnotesize
+Informe generado el 29 de octubre de 2026 · Versión 4.0 consolidada\\
+Servicios Generales de la Plana · Departamento de IT
+\end{center}
+
+\end{document}

@@ -480,6 +480,45 @@ body.pres:not(.g) .nota{font-size:clamp(.62rem,.82vw,1.1rem)}
 #offline-overlay .cron{font-size:clamp(1.4rem,4vw,4rem);font-variant-numeric:tabular-nums}
 body.tv.sincon #offline-overlay,
 body.pres.sincon #offline-overlay{display:flex}
+
+/* ------------------------------------------------- modo Solo ATENEA2
+   Es el modo presentacion congelado en una sola instancia: reutiliza toda
+   su maquetacion y solo quita lo que sobra (la tira de navegacion y el
+   contador de rotacion). */
+body.solo #pres-nav{display:none}
+body.solo footer{margin-bottom:0}
+
+/* Franja de aviso de otras instancias. No tapa nada: empuja el contenido.
+   Aparece unos segundos, se retira y vuelve a asomar mientras el problema
+   siga, para que no se convierta en papel pintado. */
+#franja{display:none}
+body.solo #franja{
+  display:block;position:fixed;left:0;right:0;bottom:0;z-index:60;
+  background:linear-gradient(90deg,#7f1d1d,#b91c1c 55%,#7f1d1d);
+  border-top:2px solid #fca5a5;
+  box-shadow:0 -6px 24px rgba(0,0,0,.45);
+  transform:translateY(110%);transition:transform .45s cubic-bezier(.2,.8,.2,1);
+  padding:clamp(6px,1.1vh,14px) clamp(14px,2vw,34px)
+}
+body.solo.fr-on #franja{transform:translateY(0)}
+body.solo:not(.fr-hay) #franja{display:none}
+#franja .fr-in{
+  display:flex;align-items:center;gap:clamp(12px,2vw,30px);flex-wrap:wrap;
+  color:#fff;font-weight:800;letter-spacing:.02em;
+  font-size:clamp(.85rem,1.5vw,2.1rem)
+}
+#franja .fr-ico{font-size:1.15em;line-height:1}
+#franja .fr-tit{opacity:.85;font-weight:700;
+  font-size:clamp(.6rem,.95vw,1.3rem);text-transform:uppercase;
+  letter-spacing:.12em;margin-right:4px}
+#franja .fr-it{display:inline-flex;align-items:center;gap:8px;
+  background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.3);
+  border-radius:999px;padding:clamp(2px,.45vh,7px) clamp(10px,1.1vw,20px)}
+#franja .fr-it b{font-weight:900}
+#franja .fr-it .fr-d{opacity:.9;font-weight:700;
+  font-size:clamp(.65rem,1vw,1.35rem)}
+/* el contenido se aparta para que la franja no tape la ultima fila */
+body.solo.fr-on #sites{padding-bottom:clamp(44px,7vh,96px)}
 </style>
 </head>
 <body>
@@ -496,6 +535,7 @@ body.pres.sincon #offline-overlay{display:flex}
     <button id="btn-alertas">&#128276; Alertas: OFF</button>
     <button id="btn-tv">&#128250; Modo TV</button>
     <button id="btn-pres">&#127916; Presentación</button>
+    <button id="btn-solo">&#128269; Solo ATENEA2</button>
   </div>
   <div id="clock"></div>
 </header>
@@ -506,6 +546,8 @@ body.pres.sincon #offline-overlay{display:flex}
 <div id="bloqueos-tv"></div>
 
 <footer>SGP · Departamento de IT</footer>
+
+<div id="franja"><div class="fr-in"></div></div>
 
 <div id="offline-overlay">
   <div class="ic">&#9888;</div>
@@ -1077,7 +1119,14 @@ function render(estado){
   pintarBloqueosTV(insts);
   // primero se decide que tarjeta se ve y luego se pintan las graficas: al
   // reves saldrian dibujadas con ancho cero
-  if (presOn) presAplicar();
+  if (soloOn){
+    // la lista de instancias puede reordenarse entre refrescos: hay que
+    // volver a localizar la diapositiva de ATENEA2, no fiarse del indice
+    const p = soloPaso();
+    if (p >= 0) presIdx = p;
+    presAplicar();
+    pintarFranja();
+  } else if (presOn) presAplicar();
   pintarTodas();
   if (document.body.classList.contains("tv")) fitTV();
   avisarSiEmpeora(insts);
@@ -1319,10 +1368,131 @@ function presAplicar(){
 
 function presTick(){
   if (!presOn || presPausa) return;
+  if (soloOn) return;              // el modo Solo no rota: se queda clavado
   if (presSecuencia().length < 2){ presAplicar(); return; }
   presResta--;
   if (presResta <= 0) presIr(presIdx + 1);
   else presAplicar();
+}
+
+// ------------------------------------------------- modo Solo ATENEA2
+//
+// Es el modo presentacion congelado en una instancia. Reutiliza su
+// maquetacion entera, asi que aqui solo hay que fijar la diapositiva y
+// gestionar la franja de avisos de las demas.
+
+const SOLO_CORTO     = "ATENEA2";
+const FRANJA_VIS_S   = 20;    // segundos que la franja permanece asomada
+const FRANJA_CICLO_S = 150;   // cada cuanto vuelve a asomar si el problema sigue
+
+let soloOn    = false;
+let franjaSeg = 0;
+
+// Indice, dentro de la secuencia de diapositivas, de la tarjeta de ATENEA2.
+function soloPaso(){
+  const insts = presInstancias();
+  const k = insts.findIndex(i => tituloTV(i.nombre) === SOLO_CORTO);
+  if (k < 0) return -1;
+  return presSecuencia().findIndex(p => p.t === "i" && p.k === k);
+}
+
+// Las demas instancias que merecen interrumpir: sesiones bloqueadas, o el
+// monitor caido / sin datos. Deliberadamente NO entran los avisos de CPU,
+// memoria o backups: generarian ruido constante en una pantalla de sala.
+//
+// Para "caido" nos fiamos del nivel que ya calcula el colector: alli se
+// contemplan RUNNING y STARTED como buenos, ademas del error de conexion.
+// Repetir la comprobacion aqui daria falsos positivos.
+function franjaProblemas(){
+  return presInstancias().filter(i => {
+    if (tituloTV(i.nombre) === SOLO_CORTO) return false;
+    const bloq = (i.sesiones_bloqueadas || 0) > 0 || (i.bloqueos || []).length > 0;
+    return bloq || i.nivel === "caido";
+  }).map(i => {
+    const caido = i.nivel === "caido";
+    const n = (i.sesiones_bloqueadas || 0) || (i.bloqueos || []).length;
+    return {
+      nombre: tituloTV(i.nombre),
+      detalle: caido ? "sin datos"
+                     : (n + (n === 1 ? " sesión bloqueada" : " sesiones bloqueadas")),
+      caido: caido
+    };
+  });
+}
+
+function pintarFranja(){
+  const fr = document.getElementById("franja");
+  if (!soloOn){
+    document.body.classList.remove("fr-on", "fr-hay");
+    return;
+  }
+  const probs = franjaProblemas();
+  document.body.classList.toggle("fr-hay", probs.length > 0);
+
+  if (!probs.length){
+    // al normalizarse se retira de inmediato y se reinicia el ciclo
+    document.body.classList.remove("fr-on");
+    franjaSeg = 0;
+    return;
+  }
+
+  const hayCaido = probs.some(p => p.caido);
+  fr.querySelector(".fr-in").innerHTML =
+    '<span class="fr-ico">' + (hayCaido ? "&#9888;" : "&#128721;") + "</span>" +
+    '<span class="fr-tit">Otras instancias</span>' +
+    probs.map(p =>
+      '<span class="fr-it"><b>' + esc(p.nombre) + "</b>" +
+      '<span class="fr-d">' + esc(p.detalle) + "</span></span>").join("");
+}
+
+function franjaTick(){
+  if (!soloOn || !document.body.classList.contains("fr-hay")) return;
+  franjaSeg++;
+  const t = franjaSeg % FRANJA_CICLO_S;
+  document.body.classList.toggle("fr-on", t < FRANJA_VIS_S);
+}
+
+function toggleSolo(mantenerFs){
+  const estaba = soloOn;
+
+  // Modo TV y Presentacion no pueden convivir con este
+  if (!estaba){
+    if (presOn && !document.body.classList.contains("solo")) togglePres(true);
+    if (document.body.classList.contains("tv") &&
+        !document.body.classList.contains("g")) toggleTV(true);
+  }
+
+  soloOn = !estaba;
+  document.body.classList.toggle("solo", soloOn);
+  document.getElementById("btn-solo").classList.toggle("on", soloOn);
+
+  if (soloOn){
+    presOn = true;
+    presPausa = false;
+    document.body.classList.add("pres");
+    if (!mantenerFs && document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    const p = soloPaso();
+    if (p >= 0) presIr(p); else presAplicar();
+    franjaSeg = 0;
+    pintarFranja();
+  } else {
+    document.body.classList.remove("fr-on", "fr-hay");
+    presOn = false;
+    document.body.classList.remove("pres", "g", "tv");
+    document.getElementById("btn-tv").classList.remove("on");
+    document.getElementById("btn-pres").classList.remove("on");
+    document.getElementById("sites").style.height = "";
+    const nav = document.getElementById("pres-nav");
+    nav.innerHTML = ""; nav.dataset.firma = "";
+    document.querySelectorAll(".card.pres-on")
+      .forEach(c => c.classList.remove("pres-on"));
+    if (!mantenerFs && document.exitFullscreen && document.fullscreenElement){
+      document.exitFullscreen();
+    }
+    pintarTodas();
+  }
 }
 
 // `mantenerFs` = no tocar la pantalla completa. Se usa al saltar de un modo a
@@ -1508,10 +1678,15 @@ btnAl.addEventListener("click", () => {
 pintarBotonAlertas();
 
 document.getElementById("btn-tv").addEventListener("click", () => {
-  if (presOn) togglePres(true);   // no pueden convivir
+  if (soloOn) toggleSolo(true);
+  else if (presOn) togglePres(true);   // no pueden convivir
   toggleTV();
 });
-document.getElementById("btn-pres").addEventListener("click", togglePres);
+document.getElementById("btn-pres").addEventListener("click", () => {
+  if (soloOn) toggleSolo(true);
+  togglePres();
+});
+document.getElementById("btn-solo").addEventListener("click", () => toggleSolo());
 
 // clic en un nombre de la tira: salta a esa instancia
 document.getElementById("pres-nav").addEventListener("click", e => {
@@ -1521,6 +1696,10 @@ document.getElementById("pres-nav").addEventListener("click", e => {
 
 // atajos: flechas para moverse, espacio para pausar, Esc para salir
 document.addEventListener("keydown", e => {
+  if (soloOn){
+    if (e.key === "Escape") toggleSolo();
+    return;                       // en Solo no hay navegacion: no rota
+  }
   if (!presOn) return;
   if (e.key === "ArrowRight"){ e.preventDefault(); presIr(presIdx + 1); }
   else if (e.key === "ArrowLeft"){ e.preventDefault(); presIr(presIdx - 1); }
@@ -1531,10 +1710,13 @@ document.addEventListener("keydown", e => {
 // El navegador se come el Escape para salir de pantalla completa y no llega a
 // la pagina: si no escuchamos esto, harian falta dos pulsaciones para salir.
 document.addEventListener("fullscreenchange", () => {
-  if (!document.fullscreenElement && presOn) togglePres(true);
+  if (document.fullscreenElement) return;
+  if (soloOn) toggleSolo(true);
+  else if (presOn) togglePres(true);
 });
 
 setInterval(presTick, 1000);
+setInterval(franjaTick, 1000);
 document.getElementById("logo").addEventListener("error", function(){ this.style.display = "none"; });
 window.addEventListener("resize", () => {
   if (document.body.classList.contains("tv")) fitTV();
