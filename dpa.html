@@ -229,6 +229,7 @@ body.tv{padding:10px 12px;overflow:hidden}
 /* En TV la tarjeta se queda en lo esencial: sesiones, bloqueos e indicadores */
 body.tv #banner,body.tv .card-h .tech,body.tv .upd,
 body.tv .detalle,body.tv .charts,body.tv .gauges,body.tv .act,
+body.tv .topbloq,
 body.tv .m-qual{display:none}
 body.tv #sites{display:grid;grid-auto-rows:1fr;gap:10px}
 /* la seccion y su rejilla de tarjetas rellenan el alto que se les asigne */
@@ -392,11 +393,62 @@ body.pres:not(.g) .nota-normal{display:none}
   body.pres:not(.g) .cbody{grid-template-columns:1fr 1fr}
 }
 
-/* las graficas, al pie y en fila */
-body.pres:not(.g) .card > .charts{flex:none;display:grid;
-   grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-top:12px;
-   border-top:1px solid #24334a;padding-top:12px}
-body.pres:not(.g) .card > .charts .chartblock{min-width:0}
+/* Las graficas van en la columna derecha, apiladas y compactas. Antes
+   ocupaban una franja a lo ancho del pie y dejaban media pantalla muerta. */
+body.pres:not(.g) .zona-c > .charts{flex:none;display:grid;
+   grid-template-columns:1fr;gap:6px;margin-top:10px;
+   border-top:1px solid #24334a;padding-top:10px}
+body.pres:not(.g) .zona-c > .charts .chartblock{min-width:0}
+body.pres:not(.g) .zona-c > .charts canvas.chart{height:clamp(42px,7.4vh,104px)}
+body.pres:not(.g) .zona-c > .charts .clab{font-size:clamp(.52rem,.68vw,.88rem);
+   margin-bottom:1px}
+
+/* La columna derecha reparte: la lista de bloqueos se queda con lo que sobre,
+   el ranking y las graficas ocupan lo suyo y no se encogen. */
+body.pres:not(.g) .zona-c{display:flex;flex-direction:column;gap:0}
+body.pres:not(.g) .zona-c > .blk{flex:1 1 auto;min-height:0}
+body.pres:not(.g) .zona-c > .topbloq{flex:none;margin-top:10px}
+
+/* Bloque compacto de memoria e hipervisor, en la columna izquierda. Solo en
+   la diapositiva de instancia: en la vista normal duplicaria las tablas de
+   detalle, y en el mosaico de Modo TV no hay sitio. */
+.claves{display:none;margin-top:12px}
+body.pres:not(.g) .claves{display:block}
+.claves .subt{margin-top:10px}
+.claves .subt:first-child{margin-top:0}
+.kvgrid{display:grid;grid-template-columns:1fr;gap:1px}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:2px 0;border-bottom:1px solid rgba(43,61,87,.45);font-size:.82rem}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.kv .v{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+body.tv .kv,body.pres .kv{font-size:clamp(.62rem,.86vw,1.2rem)}
+
+/* Ranking de lo que mas bloquea en el dia */
+.topbloq{margin-top:12px;border:1px solid #2b3d57;border-radius:9px;
+  background:var(--card2);padding:8px 12px}
+.topbloq h3{margin:0 0 7px;font-size:.72rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:800}
+.topbloq ul{list-style:none;margin:0;padding:0}
+.topbloq li{position:relative;display:grid;
+  grid-template-columns:1fr auto auto;align-items:center;gap:8px;
+  padding:3px 0;font-size:.8rem}
+.topbloq .tb-barra{position:absolute;inset:1px 0;z-index:0;
+  border-radius:4px;overflow:hidden}
+.topbloq .tb-barra i{display:block;height:100%;
+  background:linear-gradient(90deg,rgba(185,28,28,.34),rgba(185,28,28,.07))}
+.topbloq .tb-txt{position:relative;z-index:1;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;padding-left:7px;font-weight:600}
+.topbloq .tb-bd{color:var(--muted);font-weight:500}
+.topbloq .tb-n{position:relative;z-index:1;font-weight:900;color:#fca5a5;
+  font-variant-numeric:tabular-nums}
+.topbloq .tb-h{position:relative;z-index:1;color:var(--muted);
+  font-variant-numeric:tabular-nums;padding-right:6px;
+  font-size:.86em}
+.topbloq .nota{margin-top:5px}
+body.tv .topbloq li,body.pres .topbloq li{font-size:clamp(.62rem,.84vw,1.15rem)}
+body.tv .topbloq h3,body.pres .topbloq h3{font-size:clamp(.55rem,.7vw,.95rem)}
 
 /* Sin barras de scroll en presentacion: se ven las filas que caben y se avisa
    del resto. Los listados ocupan el sitio de las tablas de detalle: no caben
@@ -750,6 +802,28 @@ function detalleHTML(i){
     ["Log libre (%)",       val(i.tempdb_log_libre_pct, "%", 20, 5, true)]
   ]);
 
+  // El porcentaje global de memoria dice poco: 80 % puede ser sano o ser un
+  // desastre. Lo que discrimina es el PLE (cuanto aguanta una pagina en
+  // memoria) y las recompilaciones (sintoma de estadisticas que se invalidan
+  // sin parar). El tamano de las caches explica en que se va.
+  const mem = filas([
+    ["Page life expectancy", val(i.ple, "s", 300, 120, true)],
+    ["Buffer cache",         i.cache_mb != null ? fmtMB(i.cache_mb) : null],
+    ["Caché de planes",      i.plan_cache_mb != null ? fmtMB(i.plan_cache_mb) : null],
+    ["Compilaciones",        val(i.compilaciones_seg, "/s")],
+    ["Recompilaciones",      val(i.recompilaciones_seg, "/s", 20, 50)],
+    ["Acierto de caché",     val(i.cache_hit, "%", 95, 90, true)]
+  ]);
+
+  // Hipervisor. Solo existe si la instancia esta vinculada a su VM en DPA.
+  const hv = filas([
+    ["Espera por CPU física", val(i.vm_ready, "%", 5, 10)],
+    ["Memoria reclamada",     val(i.vm_balloon, "%", 1, 5)],
+    ["CPU de la VM",          val(i.vm_cpu, "%", 85, 95)],
+    ["CPU del host",          val(i.host_cpu, "%", 75, 90)],
+    ["Memoria del host",      val(i.host_memoria, "%", 80, 92)]
+  ]);
+
   const alarmas = CAT_DETALLE
     .filter(c => (i.alarmas || {})[c])
     .map(c => '<span class="tag ' + colorNivelCat(i.alarmas[c]) + '">' +
@@ -759,9 +833,89 @@ function detalleHTML(i){
 
   return '<div class="detalle">' +
            '<div class="subt">Rendimiento</div><table>' + rec + "</table>" +
+           (mem ? '<div class="subt">Memoria</div><table>' + mem + "</table>" : "") +
+           (hv ? '<div class="subt">Hipervisor</div><table>' + hv + "</table>" : "") +
            (tempdb ? '<div class="subt">TempDB</div><table>' + tempdb + "</table>" : "") +
            '<div class="subt">Instancia</div><table>' + inf + "</table>" +
            '<div class="alarmas">' + alarmas + "</div>" +
+         "</div>";
+}
+
+// En presentacion las tablas de detalle se ocultan para dejar sitio a los
+// listados, pero el PLE y el hipervisor son justo lo que hay que vigilar en
+// una tele. Este bloque compacto vive en la columna izquierda, que tiene
+// hueco de sobra.
+function clavesHTML(i){
+  const celda = (et, v, cls) => v == null ? "" :
+    '<div class="kv"><span class="k">' + esc(et) + "</span>" +
+    '<span class="v ' + (cls || "") + '">' + v + "</span></div>";
+
+  const niv = (v, aviso, critico, invertido) => {
+    if (v == null) return "";
+    const malo = invertido ? v <= critico : v >= critico;
+    const reg  = invertido ? v <= aviso   : v >= aviso;
+    return malo ? "v-alarm" : (reg ? "v-warn" : "");
+  };
+
+  const mem =
+    celda("Page life expectancy", i.ple != null ? fmt(i.ple, 0) + " s" : null,
+          niv(i.ple, 300, 120, true)) +
+    celda("Recompilaciones", i.recompilaciones_seg != null
+          ? fmt(i.recompilaciones_seg, 1) + "/s" : null,
+          niv(i.recompilaciones_seg, 20, 50)) +
+    celda("Buffer cache", fmtMB(i.cache_mb)) +
+    celda("Caché de planes", fmtMB(i.plan_cache_mb));
+
+  const hv =
+    celda("Espera por CPU física", i.vm_ready != null
+          ? fmt(i.vm_ready, 2) + " %" : null, niv(i.vm_ready, 5, 10)) +
+    celda("Memoria reclamada", i.vm_balloon != null
+          ? fmt(i.vm_balloon, 1) + " %" : null, niv(i.vm_balloon, 1, 5)) +
+    celda("CPU del host", i.host_cpu != null
+          ? fmt(i.host_cpu, 0) + " %" : null, niv(i.host_cpu, 75, 90)) +
+    celda("Memoria del host", i.host_memoria != null
+          ? fmt(i.host_memoria, 0) + " %" : null, niv(i.host_memoria, 80, 92));
+
+  if (!mem && !hv) return "";
+  return '<div class="claves">' +
+    (mem ? '<div class="subt">Memoria en detalle</div>' +
+           '<div class="kvgrid">' + mem + "</div>" : "") +
+    (hv ? '<div class="subt">Hipervisor</div>' +
+          '<div class="kvgrid">' + hv + "</div>" : "") +
+    "</div>";
+}
+
+// MB a una unidad legible: 23456 -> "22,9 GB"
+function fmtMB(v){
+  if (v == null) return null;
+  return v >= 1024 ? fmt(v / 1024, 1) + " GB" : fmt(v, 0) + " MB";
+}
+
+// Ranking de lo que mas bloquea en el dia. Lo acumula el colector a partir
+// de las listas de bloqueo de cada ciclo: DPA da el numero, no el porque.
+function topBloqueosHTML(i){
+  const t = i.bloqueos_top;
+  if (!Array.isArray(t) || !t.length) return "";
+  const max = Math.max.apply(null, t.map(x => x.veces || 0)) || 1;
+  const items = t.map(x => {
+    const pct = Math.max(4, Math.round(100 * (x.veces || 0) / max));
+    const hora = x.ultima
+      ? new Date(x.ultima * 1000).toLocaleTimeString("es-ES",
+          {hour:"2-digit", minute:"2-digit"}) : "";
+    const peor = x.espera_max ? fmtDur(x.espera_max) : "";
+    return '<li title="' + esc(x.etiqueta + (x.bd ? " · " + x.bd : "") +
+             (peor ? "\nespera más larga: " + peor : "")) + '">' +
+           '<span class="tb-barra"><i style="width:' + pct + '%"></i></span>' +
+           '<span class="tb-txt">' + esc(x.etiqueta) +
+             (x.bd ? ' <span class="tb-bd">' + esc(x.bd) + "</span>" : "") +
+           "</span>" +
+           '<span class="tb-n">' + fmt(x.veces, 0) + "×</span>" +
+           '<span class="tb-h">' + (peor ? esc(peor) : esc(hora)) + "</span></li>";
+  }).join("");
+  return '<div class="topbloq"><h3>Lo que más bloquea hoy</h3>' +
+         "<ul>" + items + "</ul>" +
+         '<div class="nota">Desde las 00:00 · «×» son incidentes distintos, ' +
+         'a la derecha la espera más larga</div>' +
          "</div>";
 }
 
@@ -1206,6 +1360,7 @@ function tarjeta(i){
           indicadoresHTML(i) +
           avisosHTML(i) +
           medidoresHTML(i) +
+          clavesHTML(i) +
           jobsHTML(i) +
         "</div>" +
         '<div class="zona zona-b">' + detalleHTML(i) + agHTML(i) + "</div>" +
@@ -1214,6 +1369,7 @@ function tarjeta(i){
       "</div>" +
       bloqueosHTML(i) +
       sesionesHTML(i) +
+      topBloqueosHTML(i) +
     "</div>";
 }
 
@@ -1444,9 +1600,15 @@ function presReubicarListas(tarjeta){
   if (act && zb) zb.insertBefore(act, zb.firstChild);
   if (blk && zc) zc.insertBefore(blk, zc.firstChild);
 
-  // las graficas bajan al pie de la tarjeta, a lo ancho y en fila
-  const graf = tarjeta.querySelector(".zona-c .charts");
-  if (graf) tarjeta.appendChild(graf);
+  // Las graficas se quedan en la columna derecha, apiladas y pequenas: a lo
+  // ancho del pie desperdiciaban media pantalla y dejaban la derecha vacia.
+  // El ranking de bloqueos va entre la lista y las graficas.
+  const graf = tarjeta.querySelector(".charts");
+  const top  = tarjeta.querySelector(":scope > .topbloq");
+  if (zc){
+    if (top)  zc.appendChild(top);
+    if (graf) zc.appendChild(graf);
+  }
 }
 
 function presAplicar(){

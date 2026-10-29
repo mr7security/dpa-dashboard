@@ -27,17 +27,26 @@
     "Si falta este bloque, si pymssql no esta instalado o si la conexion falla,",
     "el panel funciona igual con los datos de DPA: esto solo anade.",
     "",
-    "Requisitos de la cuenta (ademas de VIEW SERVER STATE que ya tiene",
-    "dpaMONITOR): pertenecer a SQLAgentReaderRole en msdb. Sin ese rol,",
-    "sys.sysjobs solo devuelve los jobs de los que la cuenta es duena, que",
-    "normalmente son cero, y los nombres saldran vacios.",
+    "AVISO DE SEGURIDAD. Comprobado el 29/10/2026: la cuenta dpaMONITOR es",
+    "SYSADMIN en SRVPRORPDB01 (IS_SRVROLEMEMBER('sysadmin') = 1). NO es una",
+    "cuenta de solo lectura, pese al nombre. Poner esa contrasena aqui deja",
+    "credenciales de administrador total de produccion en un fichero de un",
+    "servidor web. Lo correcto es crear una cuenta dedicada con el minimo:",
     "",
+    "   CREATE LOGIN dpaPANEL WITH PASSWORD = '...';",
+    "   GRANT VIEW SERVER STATE TO dpaPANEL;",
     "   USE msdb;",
-    "   CREATE USER dpaMONITOR FOR LOGIN dpaMONITOR;",
-    "   ALTER ROLE SQLAgentReaderRole ADD MEMBER dpaMONITOR;",
+    "   CREATE USER dpaPANEL FOR LOGIN dpaPANEL;",
+    "   ALTER ROLE SQLAgentReaderRole ADD MEMBER dpaPANEL;",
+    "",
+    "SQLAgentReaderRole es lo que permite ver TODOS los jobs: sin el, sysjobs",
+    "solo devuelve los que la cuenta posee. (dpaMONITOR los ve igualmente por",
+    "ser sysadmin, pero esa no es razon para usarla aqui.)",
     "",
     "La clave de 'instancias' tiene que ser EXACTAMENTE el nombre que muestra",
-    "DPA para esa instancia, el mismo que sale en la cabecera de la tarjeta."
+    "DPA para esa instancia, el mismo que sale en la cabecera de la tarjeta.",
+    "IPs reales segun DPA: ATENEA2 10.0.1.174, SRVPBI 10.0.0.102,",
+    "PROMETEO 10.0.1.16, AQUILES 10.0.2.150, SCALEPROD 10.0.0.175."
   ],
   "sql_directo": {
     "activo": false,
@@ -46,9 +55,9 @@
     "intervalo_jobs_segundos": 30,
     "instancias": {
       "SRVPRORPDB01 via ATENEA2": {
-        "host": "10.0.0.136",
+        "host": "10.0.1.174",
         "puerto": 1433,
-        "usuario": "dpaMONITOR",
+        "usuario": "dpaPANEL",
         "password": "CAMBIAME"
       }
     }

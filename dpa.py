@@ -56,6 +56,21 @@ METRICAS = {
     "Memory Utilization": "memoria",
     "Page Life Expectancy": "ple",
     "Buffer Cache Hit Ratio": "cache_hit",
+    # Desglose de memoria: el porcentaje global dice poco. El PLE y las
+    # recompilaciones son los que de verdad avisan, y el tamano de las caches
+    # explica en que se esta yendo la memoria.
+    "Buffer Cache Size": "cache_mb",
+    "Plan Cache Size": "plan_cache_mb",
+    "SQL Compilations Per Sec": "compilaciones_seg",
+    "SQL Re-Compilations Per Sec": "recompilaciones_seg",
+
+    # Hipervisor (vSphere). Solo llegan si la instancia esta vinculada a su
+    # maquina virtual en DPA; si no, DPA devuelve la serie vacia y se ignoran.
+    "vmReadyTime": "vm_ready",
+    "vmPercentBallooned": "vm_balloon",
+    "vmCpuUsagePercent": "vm_cpu",
+    "hostCpuUsagePercent": "host_cpu",
+    "hostMemoryUsage": "host_memoria",
     "SQL Disk Read Latency": "disco_lectura",
     "SQL Disk Write Latency": "disco_escritura",
     "Batch Requests Per Sec": "batch_seg",
@@ -729,6 +744,20 @@ def parsear_instancia(meta, tabs, cats, datos_series):
         "memoria": m["memoria"]["ultimo"],
         "ple": m["ple"]["ultimo"],
         "cache_hit": m["cache_hit"]["ultimo"],
+
+        # desglose de memoria
+        "cache_mb": m["cache_mb"]["ultimo"],
+        "plan_cache_mb": m["plan_cache_mb"]["ultimo"],
+        "compilaciones_seg": m["compilaciones_seg"]["ultimo"],
+        "recompilaciones_seg": m["recompilaciones_seg"]["ultimo"],
+
+        # hipervisor (vacias si la instancia no esta vinculada a su VM)
+        "vm_ready": m["vm_ready"]["ultimo"],
+        "vm_balloon": m["vm_balloon"]["ultimo"],
+        "vm_cpu": m["vm_cpu"]["ultimo"],
+        "host_cpu": m["host_cpu"]["ultimo"],
+        "host_memoria": m["host_memoria"]["ultimo"],
+
         "disco_lectura": m["disco_lectura"]["ultimo"],
         "disco_escritura": m["disco_escritura"]["ultimo"],
         "batch_seg": m["batch_seg"]["ultimo"],
@@ -1008,6 +1037,13 @@ class Monitor(object):
         self.intervalo_sesiones = int(cfg.get("intervalo_sesiones_segundos", 120))
         self._cache_sesiones = {}
         self._cache_ses_lock = threading.Lock()
+        # Recuento de bloqueos del dia. DPA da el numero de sesiones
+        # bloqueadas instante a instante, pero no dice QUE se repite. Como ya
+        # sondeamos la lista en cada ciclo, la vamos tabulando aqui. Se
+        # reinicia solo al cambiar de dia.
+        self._bloq_hoy = {}
+        self._bloq_dia = None
+        self._bloq_lock = threading.Lock()
         # Opcional: conexion directa a las instancias para lo que DPA no da
         # (nombres de job y jobs en ejecucion). Si no esta configurado o
         # pymssql no esta, queda inerte y el panel funciona igual.
@@ -1083,6 +1119,8 @@ class Monitor(object):
                     if nombres:
                         resolver_jobs(inst.get("sesiones_detalle"), nombres)
                         resolver_jobs(inst.get("bloqueos"), nombres)
+                        # el recuento se hace DESPUES de resolver, para que la
+                        # etiqueta guarde el nombre del job y no el binario
                     jobs = self.sql.jobs_activos(nombre_inst)
                     if jobs is not None:
                         inst["jobs_activos"] = jobs
@@ -1092,6 +1130,16 @@ class Monitor(object):
                 except Exception as e:  # noqa: BLE001
                     log.warning("%s: SQL directo: %s", nombre_inst, e)
                     inst["sql_error"] = str(e)
+
+            # Recuento de bloqueos del dia. Va al final y fuera del try del
+            # SQL directo: no depende de el y debe funcionar igual sin el.
+            try:
+                self._tabular_bloqueos(db_id, inst.get("bloqueos"))
+                top = self.top_bloqueos(db_id)
+                if top:
+                    inst["bloqueos_top"] = top
+            except Exception as e:  # noqa: BLE001
+                log.warning("%s: recuento de bloqueos: %s", meta.get("name"), e)
 
             destino[db_id] = inst
         except Exception as e:  # noqa: BLE001
@@ -1109,6 +1157,70 @@ class Monitor(object):
                 "nivel": "caido",
                 "avisos": ["Sin respuesta de DPA"],
             }
+
+    # -- recuento de bloqueos del dia ---------------------------------------
+
+    def _tabular_bloqueos(self, db_id, lista):
+        """
+        Acumula que se repite. La clave intenta ser lo mas informativa posible:
+        el recurso bloqueado si DPA lo da, y si no el programa (que para los
+        jobs ya viene resuelto a nombre). Se guarda por dia local.
+        """
+        if not lista:
+            return
+        ahora = time.time()
+        with self._bloq_lock:
+            self._reset_si_cambia_dia()
+            tabla = self._bloq_hoy.setdefault(db_id, {})
+            for f in lista:
+                # solo nos interesa quien causa el bloqueo, no quien lo sufre
+                if f.get("rol") == "espera":
+                    continue
+                # El nombre del job o el programa identifican al culpable y se
+                # repiten; el recurso bloqueado es casi unico por incidente y
+                # llenaria la tabla de entradas de "1 vez". Va el ultimo.
+                etiqueta = (f.get("job_nombre") or f.get("programa")
+                            or f.get("recurso") or f.get("comando") or "")
+                etiqueta = str(etiqueta).strip()
+                if not etiqueta:
+                    continue
+                bd = (f.get("bd") or "").strip()
+                clave = (bd, etiqueta)
+                e = tabla.get(clave)
+                if e is None:
+                    # tope de seguridad: si la instancia genera etiquetas muy
+                    # variadas, no dejamos crecer la tabla sin limite
+                    if len(tabla) >= 500:
+                        continue
+                    tabla[clave] = {"bd": bd, "etiqueta": etiqueta,
+                                    "veces": 1, "ultima": ahora,
+                                    "espera_max": f.get("espera_s") or 0}
+                else:
+                    # Sondeamos cada pocos segundos: un mismo bloqueo que dure
+                    # diez minutos aparecera decenas de veces. Solo se cuenta
+                    # como incidente nuevo si hubo un hueco de mas de un
+                    # minuto; si no, se actualiza la espera maxima y ya.
+                    if ahora - (e.get("ultima") or 0) > 60:
+                        e["veces"] += 1
+                    e["ultima"] = ahora
+                    if (f.get("espera_s") or 0) > (e["espera_max"] or 0):
+                        e["espera_max"] = f.get("espera_s")
+
+    def _reset_si_cambia_dia(self):
+        """Vacia el recuento al cambiar de dia. Llamar con _bloq_lock tomado."""
+        hoy = time.strftime("%Y-%m-%d")
+        if self._bloq_dia != hoy:
+            self._bloq_hoy = {}
+            self._bloq_dia = hoy
+
+    def top_bloqueos(self, db_id, maximo=6):
+        with self._bloq_lock:
+            # tambien aqui: si no hubo bloqueos en todo el dia nuevo, sin esto
+            # seguiriamos sirviendo el recuento de ayer bajo el rotulo "hoy"
+            self._reset_si_cambia_dia()
+            filas = [dict(x) for x in (self._bloq_hoy.get(db_id) or {}).values()]
+        filas.sort(key=lambda x: (-x["veces"], -x["ultima"]))
+        return filas[:maximo]
 
     def detalle_sesiones(self, db_id):
         """
