@@ -368,21 +368,36 @@ body.pres:not(.g) .zona{overflow:hidden;display:flex;flex-direction:column}
 /* Las tres metricas se apilan, con la etiqueta al lado del numero: en una
    columna estrecha, tres numeros grandes en fila no caben y se salen. */
 body.pres:not(.g) .zona-a{justify-content:flex-start}
+/* Resumen de cabecera. La etiqueta y el numero iban en la misma linea, asi
+   que con 45, 0 y 1438 no habia forma de comparar nada: cada cifra empezaba
+   en un sitio. Ahora es una rejilla de dos columnas con los numeros
+   alineados a la derecha, uno debajo de otro, y el "Pico ..." colgando de la
+   etiqueta. Se leen de un vistazo desde lejos. */
 body.pres:not(.g) .mstrip{grid-template-columns:1fr;gap:0;text-align:left}
-body.pres:not(.g) .m{flex-direction:row;flex-wrap:wrap;align-items:baseline;
-   gap:0 12px}
-body.pres:not(.g) .m .label{order:1;flex:0 0 auto;
-   font-size:clamp(.6rem,.78vw,1.05rem)}
-body.pres:not(.g) .m .value{order:2;flex:0 0 auto;line-height:1;
-   font-size:clamp(1.4rem,2vw,2.9rem)}
-body.pres:not(.g) .m .pie{order:3;flex:1 0 100%;margin-top:0;
-   font-size:clamp(.58rem,.72vw,.95rem)}
+body.pres:not(.g) .m{
+   display:grid;
+   grid-template-columns:1fr auto;
+   grid-template-areas:"lab val" "pie val";
+   column-gap:16px; row-gap:1px;
+   padding:7px 0;
+   border-bottom:1px solid rgba(43,61,87,.55)}
+body.pres:not(.g) .m:last-child{border-bottom:none}
+body.pres:not(.g) .m .label{grid-area:lab;align-self:end;
+   font-size:clamp(.6rem,.8vw,1.1rem);letter-spacing:.07em}
+body.pres:not(.g) .m .value{grid-area:val;align-self:center;
+   text-align:right;line-height:.95;white-space:nowrap;
+   font-variant-numeric:tabular-nums;
+   font-size:clamp(1.6rem,2.45vw,3.5rem)}
+body.pres:not(.g) .m .value small{font-size:.36em;margin-left:1px}
+body.pres:not(.g) .m .pie{grid-area:pie;align-self:start;margin-top:0;
+   font-size:clamp(.56rem,.72vw,.95rem)}
 
 /* la columna izquierda va justa de alto: todo un poco mas compacto */
-body.pres:not(.g) .ind{margin-top:8px;gap:5px}
+body.pres:not(.g) .ind{margin-top:12px;gap:5px}
 body.pres:not(.g) .ichip{font-size:clamp(.56rem,.72vw,.95rem);padding:2px 8px}
-body.pres:not(.g) .avisos{margin-top:8px;font-size:clamp(.58rem,.75vw,1rem)}
-body.pres:not(.g) .gauges{margin-top:10px}
+body.pres:not(.g) .avisos{margin-top:7px;font-size:clamp(.58rem,.75vw,1rem)}
+body.pres:not(.g) .gauges{margin-top:14px;
+   border-top:1px solid rgba(43,61,87,.55);padding-top:12px}
 body.pres:not(.g) .g{padding:1px 0;font-size:clamp(.6rem,.78vw,1.05rem)}
 /* signal waits es el medidor menos util de los cinco: cede el sitio */
 body.pres:not(.g) .gauges .g:nth-child(6){display:none}
@@ -418,10 +433,15 @@ body.pres:not(.g) .zona-b > .esperas{margin-top:auto}
 /* Bloque compacto de memoria e hipervisor, en la columna izquierda. Solo en
    la diapositiva de instancia: en la vista normal duplicaria las tablas de
    detalle, y en el mosaico de Modo TV no hay sitio. */
-.claves{display:none;margin-top:12px}
-body.pres:not(.g) .claves{display:block}
-.claves .subt{margin-top:10px}
+.claves{display:none;margin-top:14px}
+body.pres:not(.g) .claves{display:block;
+  border-top:1px solid rgba(43,61,87,.55);padding-top:12px}
+.claves .subt{margin-top:13px}
 .claves .subt:first-child{margin-top:0}
+/* los tres sub-bloques se leen como secciones, no como una lista larga */
+body.pres:not(.g) .claves .subt{
+  font-size:clamp(.56rem,.7vw,.95rem);letter-spacing:.11em;
+  color:#7dd3fc;opacity:.85;margin-bottom:3px}
 .kvgrid{display:grid;grid-template-columns:1fr;gap:1px}
 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
   padding:2px 0;border-bottom:1px solid rgba(43,61,87,.45);font-size:.82rem}
@@ -575,7 +595,7 @@ body.tv.sincon #offline-overlay{display:flex}
 .jobn{color:#7dd3fc;font-weight:700}
 
 /* Jobs del Agent en ejecucion ahora mismo */
-.jobs{margin-top:10px;border:1px solid #2b3d57;border-radius:9px;
+.jobs{margin-top:14px;border:1px solid #2b3d57;border-radius:9px;
   background:var(--card2);padding:8px 12px}
 .jobs h3{margin:0 0 6px;font-size:.72rem;letter-spacing:.09em;
   text-transform:uppercase;color:var(--muted);font-weight:800}
@@ -590,6 +610,8 @@ body.tv.sincon #offline-overlay{display:flex}
   white-space:nowrap}
 .jobs li .t{color:var(--muted);font-weight:700;white-space:nowrap}
 .jobs li.lento .t{color:#fca5a5}
+.jobs li.mas{background:none;border:1px dashed rgba(148,163,184,.35);
+  color:var(--muted);font-weight:700}
 body.tv .jobs li,body.pres .jobs li{font-size:clamp(.62rem,.82vw,1.1rem)}
 body.tv .jobs h3,body.pres .jobs h3{font-size:clamp(.55rem,.7vw,.95rem)}
 
@@ -1357,7 +1379,13 @@ function jobsHTML(i){
            '<div class="nota">Ninguno ahora mismo</div></div>';
   }
   const lentos = j.filter(x => x.lento).length;
-  const items = j.map(x => {
+  // Con 13 jobs a la vez la lista desborda la columna. Se muestran los mas
+  // largos (vienen ordenados por hora de arranque, el primero es el que
+  // lleva mas tiempo) y se avisa del resto.
+  const TOPE = 8;
+  const visibles = j.slice(0, TOPE);
+  const resto = j.length - visibles.length;
+  const items = visibles.map(x => {
     const n = String(x.nombre || "—");
     return '<li class="' + (x.lento ? "lento" : "") + '" title="' +
       esc(n + (x.media_s ? "\nmedia 7 días: " + fmtDur(x.media_s) : "")) +
@@ -1369,7 +1397,9 @@ function jobsHTML(i){
          '<span class="pista">(' + j.length + ")</span>" +
          (lentos ? ' · <span style="color:#fca5a5">' + lentos +
                    " por encima de su media</span>" : "") +
-         "</h3><ul>" + items + "</ul></div>";
+         "</h3><ul>" + items +
+         (resto > 0 ? '<li class="mas">y ' + resto + " más</li>" : "") +
+         "</ul></div>";
 }
 
 // Dentro de la tarjeta: solo se ve en la vista normal
