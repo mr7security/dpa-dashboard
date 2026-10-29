@@ -408,6 +408,12 @@ body.pres:not(.g) .zona-c > .charts .clab{font-size:clamp(.52rem,.68vw,.88rem);
 body.pres:not(.g) .zona-c{display:flex;flex-direction:column;gap:0}
 body.pres:not(.g) .zona-c > .blk{flex:1 1 auto;min-height:0}
 body.pres:not(.g) .zona-c > .topbloq{flex:none;margin-top:10px}
+/* las graficas se quedan abajo del todo y absorben el hueco que sobre */
+body.pres:not(.g) .zona-c > .charts{margin-top:auto}
+/* y la columna del centro reparte igual: tabla arriba, esperas al pie */
+body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
+body.pres:not(.g) .zona-b > .act{flex:0 1 auto;min-height:0}
+body.pres:not(.g) .zona-b > .esperas{margin-top:auto}
 
 /* Bloque compacto de memoria e hipervisor, en la columna izquierda. Solo en
    la diapositiva de instancia: en la vista normal duplicaria las tablas de
@@ -424,6 +430,37 @@ body.pres:not(.g) .claves{display:block}
   white-space:nowrap}
 .kv .v{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 body.tv .kv,body.pres .kv{font-size:clamp(.62rem,.86vw,1.2rem)}
+
+/* Donde se va el tiempo: top de esperas acumuladas */
+.esperas{margin-top:12px;border:1px solid #2b3d57;border-radius:9px;
+  background:var(--card2);padding:8px 12px}
+.esperas h3{margin:0 0 7px;font-size:.72rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:800}
+.esperas .es-tot{color:#fca5a5;margin-left:6px}
+.esperas ul{list-style:none;margin:0;padding:0}
+.esperas li{position:relative;display:grid;grid-template-columns:1fr auto;
+  align-items:center;gap:10px;padding:3px 0;font-size:.8rem}
+.esperas .es-barra{position:absolute;inset:1px 0;z-index:0;
+  border-radius:4px;overflow:hidden}
+.esperas .es-barra i{display:block;height:100%;
+  background:linear-gradient(90deg,rgba(100,116,139,.32),rgba(100,116,139,.06))}
+.esperas .es-barra i.par{
+  background:linear-gradient(90deg,rgba(167,139,250,.42),rgba(167,139,250,.08))}
+.esperas .es-t{position:relative;z-index:1;padding-left:7px;font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.esperas .es-q{color:var(--muted);font-weight:500;font-size:.88em}
+.esperas .es-p{position:relative;z-index:1;font-weight:900;
+  font-variant-numeric:tabular-nums;padding-right:6px}
+.esperas .nota{margin-top:5px}
+body.tv .esperas{display:none}
+body.tv .esperas li,body.pres .esperas li{font-size:clamp(.62rem,.84vw,1.15rem)}
+body.tv .esperas h3,body.pres .esperas h3{font-size:clamp(.55rem,.7vw,.95rem)}
+
+/* El bloque de bloqueos vacio no debe ocupar una caja alta solo para decir
+   que no hay nada: se queda en una linea y cede el alto a lo que si tiene
+   contenido. */
+body.pres:not(.g) .zona-c > .blk.vacio{flex:none}
+body.pres:not(.g) .blk.vacio .nota{color:var(--ok,#4ade80)}
 
 /* Ranking de lo que mas bloquea en el dia */
 .topbloq{margin-top:12px;border:1px solid #2b3d57;border-radius:9px;
@@ -478,7 +515,7 @@ body.pres:not(.g) .btab .c-ancha{width:auto;max-width:clamp(120px,11vw,280px)}
 
 /* Los bloques vacios solo se ven en presentacion: un hueco sin titulo parece
    un fallo del panel. En la vista normal y en TV estorbarian. */
-.act.vacio,.blk.vacio{display:none}
+.act.vacio,.blk.vacio,.jobs.vacio{display:none}
 body.pres:not(.g) .act.vacio,
 body.pres:not(.g) .jobs.vacio{display:none}
 body.tv .jobs.vacio{display:none}
@@ -857,6 +894,16 @@ function clavesHTML(i){
     return malo ? "v-alarm" : (reg ? "v-warn" : "");
   };
 
+  const r = i.resumen_sql || {};
+  // Una cache de planes grande con muchos planes ad-hoc es la huella del SQL
+  // sin parametrizar: cada variante literal se queda ocupando sitio.
+  const planes = r.planes != null
+    ? fmt(r.planes, 0) + (r.planes_adhoc != null
+        ? ' <span style="opacity:.65;font-weight:600">· ' +
+          fmt(100 * r.planes_adhoc / Math.max(1, r.planes), 0) + " % ad-hoc</span>"
+        : "")
+    : null;
+
   const mem =
     celda("Page life expectancy", i.ple != null ? fmt(i.ple, 0) + " s" : null,
           niv(i.ple, 300, 120, true)) +
@@ -864,7 +911,15 @@ function clavesHTML(i){
           ? fmt(i.recompilaciones_seg, 1) + "/s" : null,
           niv(i.recompilaciones_seg, 20, 50)) +
     celda("Buffer cache", fmtMB(i.cache_mb)) +
-    celda("Caché de planes", fmtMB(i.plan_cache_mb));
+    celda("Caché de planes", fmtMB(i.plan_cache_mb),
+          niv(i.plan_cache_mb, 4096, 8192)) +
+    celda("Planes en caché", planes);
+
+  const jobs =
+    celda("Jobs ejecutados hoy", r.jobs_hoy != null ? fmt(r.jobs_hoy, 0) : null) +
+    celda("De ellos, fallidos", r.jobs_fallidos != null
+          ? fmt(r.jobs_fallidos, 0) : null,
+          niv(r.jobs_fallidos, 1, 10));
 
   const hv =
     celda("Espera por CPU física", i.vm_ready != null
@@ -876,13 +931,62 @@ function clavesHTML(i){
     celda("Memoria del host", i.host_memoria != null
           ? fmt(i.host_memoria, 0) + " %" : null, niv(i.host_memoria, 80, 92));
 
-  if (!mem && !hv) return "";
+  if (!mem && !hv && !jobs) return "";
   return '<div class="claves">' +
     (mem ? '<div class="subt">Memoria en detalle</div>' +
            '<div class="kvgrid">' + mem + "</div>" : "") +
     (hv ? '<div class="subt">Hipervisor</div>' +
           '<div class="kvgrid">' + hv + "</div>" : "") +
+    (jobs ? '<div class="subt">SQL Agent hoy</div>' +
+            '<div class="kvgrid">' + jobs + "</div>" : "") +
     "</div>";
+}
+
+// Tipos de espera: que significa cada uno, en una palabra. Lo que no esté
+// aquí se pinta tal cual.
+const ESPERA_QUE_ES = {
+  CXCONSUMER:"paralelismo", CXPACKET:"paralelismo", CXSYNC_PORT:"paralelismo",
+  CXSYNC_CONSUMER:"paralelismo", EXECSYNC:"paralelismo",
+  SOS_SCHEDULER_YIELD:"CPU", THREADPOOL:"hilos agotados",
+  PAGEIOLATCH_SH:"lectura a disco", PAGEIOLATCH_EX:"lectura a disco",
+  WRITELOG:"escritura de log", LATCH_EX:"contención interna",
+  HTDELETE:"hash en paralelo", OLEDB:"consulta distribuida",
+  RESOURCE_SEMAPHORE:"memoria de consulta", ASYNC_NETWORK_IO:"cliente lento"
+};
+function queEsEspera(t){
+  const s = String(t || "");
+  if (ESPERA_QUE_ES[s]) return ESPERA_QUE_ES[s];
+  if (/^LCK_M_/.test(s)) return "bloqueo";
+  if (/^CX/.test(s)) return "paralelismo";
+  if (/^PAGEIOLATCH/.test(s)) return "lectura a disco";
+  return "";
+}
+function esParalelismo(t){ return queEsEspera(t) === "paralelismo"; }
+
+// Top de esperas acumuladas. Es el dato que mejor explica donde se va el
+// tiempo de la instancia, y hasta ahora no estaba en ninguna pantalla.
+function esperasHTML(i){
+  const e = i.esperas_top;
+  if (!Array.isArray(e) || !e.length) return "";
+  const max = Math.max.apply(null, e.map(x => x.pct || 0)) || 1;
+  const par = e.filter(x => esParalelismo(x.tipo))
+               .reduce((a, x) => a + (x.pct || 0), 0);
+  const items = e.map(x => {
+    const w = Math.max(3, Math.round(100 * (x.pct || 0) / max));
+    const que = queEsEspera(x.tipo);
+    return '<li title="' + esc(x.tipo + " · " + fmt(x.segundos, 0) + " s acumulados") + '">' +
+      '<span class="es-barra"><i class="' + (esParalelismo(x.tipo) ? "par" : "") +
+        '" style="width:' + w + '%"></i></span>' +
+      '<span class="es-t">' + esc(x.tipo) +
+        (que ? ' <span class="es-q">' + esc(que) + "</span>" : "") + "</span>" +
+      '<span class="es-p">' + fmt(x.pct, 1) + " %</span></li>";
+  }).join("");
+  return '<div class="esperas"><h3>Dónde se va el tiempo ' +
+         (par >= 30 ? '<span class="es-tot">' + fmt(par, 1) +
+                      " % paralelismo</span>" : "") + "</h3>" +
+         "<ul>" + items + "</ul>" +
+         '<div class="nota">Acumulado desde el arranque · no refleja este instante</div>' +
+         "</div>";
 }
 
 // MB a una unidad legible: 23456 -> "22,9 GB"
@@ -1344,6 +1448,8 @@ function tarjeta(i){
         '<canvas class="chart" data-key="' + i.db_id + '|Instance Wait Time" data-color="#a78bfa"></canvas></div>' +
       '<div class="chartblock" data-type="qual"><div class="clab">CPU del servidor</div>' +
         '<canvas class="chart" data-key="' + i.db_id + '|CPU Utilization" data-color="#f472b6"></canvas></div>' +
+      '<div class="chartblock bloqhora"><div class="clab">Bloqueos por hora del día</div>' +
+        '<canvas class="chart barras" data-key="' + i.db_id + '|Blocked Sessions"></canvas></div>' +
     "</div>";
 
   return '<div class="card ' + info.card + '" style="--cc:' +
@@ -1369,6 +1475,7 @@ function tarjeta(i){
       "</div>" +
       bloqueosHTML(i) +
       sesionesHTML(i) +
+      esperasHTML(i) +
       topBloqueosHTML(i) +
     "</div>";
 }
@@ -1503,8 +1610,77 @@ function drawChart(cv, pts){
 
 function pintarTodas(){
   document.querySelectorAll("canvas.chart").forEach(cv => {
-    drawChart(cv, histSeries[cv.dataset.key] || []);
+    const pts = histSeries[cv.dataset.key] || [];
+    if (cv.classList.contains("barras")) drawBloqHora(cv, pts);
+    else drawChart(cv, pts);
   });
+}
+
+// Bloqueos agregados por hora del dia. No es una serie temporal: son 24
+// barras con la media de sesiones bloqueadas en cada hora, para que el pico
+// de las 08:00 se vea de un vistazo. Por eso ignora a proposito el selector
+// de 1h/6h/24h: agrega todo lo que haya en el historico.
+function drawBloqHora(cv, pts){
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 300, H = cv.clientHeight || 52;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
+
+  const suma = new Array(24).fill(0), n = new Array(24).fill(0);
+  (pts || []).forEach(p => {
+    if (p == null || typeof p.v !== "number") return;
+    const h = new Date(p.t * 1000).getHours();
+    suma[h] += p.v; n[h]++;
+  });
+  const media = suma.map((s, k) => n[k] ? s / n[k] : null);
+  const vistos = media.filter(v => v != null);
+
+  if (!vistos.length){
+    ctx.fillStyle = "#64748b"; ctx.font = "11px Segoe UI";
+    ctx.fillText("Recopilando histórico…", 4, H/2 + 4);
+    return;
+  }
+
+  const PR = 30, PT = 10, PB = 11;
+  const topV = Math.max.apply(null, vistos);
+  const hi = Math.max(1, topV);
+  const alto = Math.max(4, H - PT - PB);
+  const ancho = (W - PR) / 24;
+  // Si no ha habido ni un bloqueo, topV es 0 y no hay pico que marcar: sin
+  // esto la barra de las 00:00 saldria en rojo de alarma con el dia limpio.
+  const pico = topV > 0 ? media.indexOf(topV) : -1;
+  const horaAhora = new Date().getHours();
+
+  for (let h = 0; h < 24; h++){
+    const x = h * ancho;
+    if (media[h] == null){
+      // hora sin datos: marca tenue para distinguirla de "cero bloqueos"
+      ctx.fillStyle = "rgba(100,116,139,.18)";
+      ctx.fillRect(x + 1, PT + alto - 2, Math.max(1, ancho - 2), 2);
+      continue;
+    }
+    const alt = Math.max(1, (media[h] / hi) * alto);
+    ctx.fillStyle = (h === pico) ? "#ef4444"
+                  : (h === horaAhora ? "#60a5fa" : "rgba(248,113,113,.42)");
+    ctx.fillRect(x + 1, PT + alto - alt, Math.max(1, ancho - 2), alt);
+  }
+
+  // etiquetas: 0, 6, 12, 18 y la hora del pico
+  ctx.fillStyle = "#64748b";
+  ctx.font = "8px Segoe UI";
+  [0, 6, 12, 18].forEach(h => {
+    ctx.fillText(String(h), h * ancho + 1, H - 2);
+  });
+  if (pico >= 0){
+    ctx.fillStyle = "#ef4444";
+    ctx.font = "bold 9px Segoe UI";
+    ctx.fillText(fmt(media[pico], 1) + " @ " + pico + "h", W - PR + 2, PT + 7);
+  } else {
+    ctx.fillStyle = "#4ade80";
+    ctx.font = "bold 9px Segoe UI";
+    ctx.fillText("sin bloqueos", W - PR - 12, PT + 7);
+  }
 }
 
 function tickHist(estado){
@@ -1513,7 +1689,8 @@ function tickHist(estado){
   const nuevo = {};
   const peticiones = [];
   insts.forEach(i => {
-    ["Active Sessions", "Instance Wait Time", "CPU Utilization"].forEach(met => {
+    ["Active Sessions", "Instance Wait Time", "CPU Utilization",
+     "Blocked Sessions"].forEach(met => {
       const clave = i.db_id + "|" + met;
       nuevo[clave] = histSeries[clave] || [];
       const url = "/api/historico?db=" + encodeURIComponent(i.db_id) +
@@ -1605,6 +1782,10 @@ function presReubicarListas(tarjeta){
   // El ranking de bloqueos va entre la lista y las graficas.
   const graf = tarjeta.querySelector(".charts");
   const top  = tarjeta.querySelector(":scope > .topbloq");
+  const esp  = tarjeta.querySelector(":scope > .esperas");
+  // Las esperas van bajo la lista de sesiones, en el centro: ahi sobra sitio
+  // cuando la instancia esta tranquila, que es justo cuando la tabla es corta.
+  if (esp && zb) zb.appendChild(esp);
   if (zc){
     if (top)  zc.appendChild(top);
     if (graf) zc.appendChild(graf);

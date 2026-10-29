@@ -858,11 +858,65 @@ ORDER BY ja.start_execution_date
 """
 
 
+# Esperas acumuladas desde el arranque. La lista de exclusion es
+# imprescindible: sin ella HADR_WORK_QUEUE por si sola aporta 81 millones de
+# segundos de espera INACTIVA (hilos de fondo sin trabajo) y distorsiona todos
+# los porcentajes. Son esperas que no significan nada sobre el rendimiento.
+SQL_ESPERAS = """
+SELECT TOP 6 wait_type,
+       wait_time_ms/1000 AS espera_s,
+       -- el NULLIF evita el error 8134 si todas las esperas supervivientes
+       -- tuvieran 0 ms (instancia recien arrancada)
+       CAST(100.0*wait_time_ms/NULLIF(SUM(wait_time_ms) OVER(), 0)
+            AS DECIMAL(5,2)) AS pct
+FROM   sys.dm_os_wait_stats
+WHERE  waiting_tasks_count > 0
+  AND  wait_type NOT IN (
+       'CLR_SEMAPHORE','LAZYWRITER_SLEEP','RESOURCE_QUEUE','SLEEP_TASK',
+       'SLEEP_SYSTEMTASK','SQLTRACE_BUFFER_FLUSH','WAITFOR','LOGMGR_QUEUE',
+       'CHECKPOINT_QUEUE','REQUEST_FOR_DEADLOCK_SEARCH','XE_TIMER_EVENT',
+       'BROKER_TO_FLUSH','BROKER_TASK_STOP','CLR_MANUAL_EVENT',
+       'DIRTY_PAGE_POLL','SP_SERVER_DIAGNOSTICS_SLEEP','QDS_ASYNC_QUEUE',
+       'QDS_SHUTDOWN_QUEUE','XE_DISPATCHER_WAIT','BROKER_EVENTHANDLER',
+       'BROKER_RECEIVE_WAITFOR','BROKER_TRANSMITTER','FT_IFTS_SCHEDULER_IDLE_WAIT',
+       'ONDEMAND_TASK_QUEUE','SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
+       'HADR_WORK_QUEUE','HADR_TIMER_TASK','HADR_NOTIFICATION_DEQUEUE',
+       'HADR_FILESTREAM_IOMGR_IOCOMPLETION','HADR_LOGCAPTURE_WAIT',
+       'HADR_CLUSAPI_CALL','PARALLEL_REDO_WORKER_WAIT_WORK',
+       'PARALLEL_REDO_DRAIN_WORKER','PWAIT_EXTENSIBILITY_CLEANUP_TASK',
+       'VDI_CLIENT_OTHER','PREEMPTIVE_XE_GETTARGETSTATE')
+ORDER BY wait_time_ms DESC
+"""
+
+# Dos contadores baratos: cuantos planes hay en cache (sube cuando el SQL no
+# va parametrizado) y como ha ido el SQL Agent hoy.
+# Una sola pasada por cada origen: la cache de planes puede tener cientos de
+# miles de entradas y no conviene recorrerla dos veces cada dos minutos.
+SQL_RESUMEN = """
+SELECT p.planes, p.planes_adhoc, j.jobs_hoy, j.jobs_fallidos
+FROM (
+    SELECT COUNT(*) AS planes,
+           SUM(CASE WHEN objtype IN ('Adhoc','Prepared') THEN 1 ELSE 0 END)
+               AS planes_adhoc
+    FROM   sys.dm_exec_cached_plans
+) AS p
+CROSS JOIN (
+    SELECT COUNT(*) AS jobs_hoy,
+           SUM(CASE WHEN run_status <> 1 THEN 1 ELSE 0 END) AS jobs_fallidos
+    FROM   msdb.dbo.sysjobhistory
+    WHERE  step_id = 0
+      AND  run_date = CONVERT(INT, CONVERT(VARCHAR(8), GETDATE(), 112))
+) AS j
+"""
+
+
 class ClienteSQL(object):
     """
     Conexion de solo lectura a una instancia monitorizada. Abre y cierra en
-    cada consulta a proposito: son dos consultas ligeras cada medio minuto y
-    mantener conexiones vivas contra produccion no compensa el riesgo.
+    cada consulta a proposito: son cuatro consultas ligeras, cada una con su
+    propio intervalo (nombres de job 900 s, jobs activos 30 s, esperas 300 s,
+    resumen 120 s), y mantener conexiones vivas contra produccion no compensa
+    el riesgo.
     """
 
     def __init__(self, host, puerto, usuario, password, timeout=8):
@@ -920,8 +974,13 @@ class SQLDirecto(object):
                 c.get("host"), c.get("puerto", 1433),
                 c.get("usuario"), c.get("password"), timeout)
 
+        self.int_esperas = int(raw.get("intervalo_esperas_segundos", 300))
+        self.int_resumen = int(raw.get("intervalo_resumen_segundos", 120))
+
         self._nombres = {}    # instancia -> (ts, {job_id_upper: nombre})
         self._jobs = {}       # instancia -> (ts, [ {...} ])
+        self._esperas = {}    # instancia -> (ts, [ {...} ])
+        self._resumen = {}    # instancia -> (ts, {...})
         self._fallo = {}      # instancia -> texto del ultimo error
         self._lock = threading.Lock()
 
@@ -981,6 +1040,35 @@ class SQLDirecto(object):
             return out
         return self._cacheado(self._jobs, instancia, self.int_jobs,
                               SQL_JOBS_ACTIVOS, _t)
+
+    def esperas(self, instancia):
+        """
+        Top de esperas acumuladas desde el arranque. Es el dato que mejor
+        explica donde se va el tiempo, pero OJO: es acumulado de semanas, no
+        dice lo que pasa ahora mismo.
+        """
+        if not self.habilitado(instancia):
+            return None
+        def _t(filas):
+            return [{"tipo": f.get("wait_type"),
+                     "segundos": int(f.get("espera_s") or 0),
+                     "pct": float(f.get("pct") or 0)} for f in filas]
+        return self._cacheado(self._esperas, instancia, self.int_esperas,
+                              SQL_ESPERAS, _t)
+
+    def resumen(self, instancia):
+        if not self.habilitado(instancia):
+            return None
+        def _t(filas):
+            if not filas:
+                return None
+            f = filas[0]
+            return {"planes": f.get("planes"),
+                    "planes_adhoc": f.get("planes_adhoc"),
+                    "jobs_hoy": f.get("jobs_hoy"),
+                    "jobs_fallidos": f.get("jobs_fallidos")}
+        return self._cacheado(self._resumen, instancia, self.int_resumen,
+                              SQL_RESUMEN, _t)
 
     def error(self, instancia):
         with self._lock:
@@ -1124,6 +1212,12 @@ class Monitor(object):
                     jobs = self.sql.jobs_activos(nombre_inst)
                     if jobs is not None:
                         inst["jobs_activos"] = jobs
+                    esp = self.sql.esperas(nombre_inst)
+                    if esp:
+                        inst["esperas_top"] = esp
+                    res = self.sql.resumen(nombre_inst)
+                    if res:
+                        inst["resumen_sql"] = res
                     err = self.sql.error(nombre_inst)
                     if err:
                         inst["sql_error"] = err

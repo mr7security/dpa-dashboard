@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>ATENEA2 — Puntos a revisar en el código</title>
+<style>
+  :root{
+    --tinta:#1a1a1a; --gris:#6b7280; --gris2:#9ca3af;
+    --linea:#e5e7eb; --fondo:#f8fafc;
+    --rojo:#b91c1c; --ambar:#b45309; --verde:#15803d; --azul:#1f6feb;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    color:var(--tinta); line-height:1.55; margin:0;
+    font-size:10.5pt;
+  }
+  .hoja{max-width:19cm; margin:0 auto; padding:1.6cm 1.4cm}
+
+  h1{font-size:21pt; margin:0 0 4px; letter-spacing:-.01em}
+  h2{font-size:14pt; margin:26px 0 10px; padding-top:14px;
+     border-top:2px solid var(--tinta)}
+  h3{font-size:11.5pt; margin:18px 0 6px; color:#374151}
+  h4{font-size:10.5pt; margin:14px 0 4px; color:var(--gris)}
+  p{margin:.6em 0}
+  ul,ol{margin:.6em 0; padding-left:1.3em}
+  li{margin:.3em 0}
+  code{font-family:"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:.92em; background:var(--fondo); padding:1px 4px;
+    border-radius:3px; border:1px solid var(--linea)}
+  pre{background:var(--fondo); border:1px solid var(--linea);
+    border-left:3px solid var(--azul); border-radius:4px;
+    padding:9px 12px; overflow:auto; font-size:9pt; line-height:1.4}
+  pre code{background:none; border:none; padding:0}
+
+  .sub{color:var(--gris); font-size:10pt; margin:0 0 2px}
+  .meta{border:1px solid var(--linea); border-radius:6px;
+    background:var(--fondo); padding:10px 14px; margin:18px 0;
+    font-size:9.5pt; color:#374151}
+  .meta div{margin:2px 0}
+  .meta b{color:var(--tinta)}
+
+  table{border-collapse:collapse; width:100%; margin:12px 0; font-size:9.5pt}
+  th{text-align:left; border-bottom:2px solid var(--tinta);
+     padding:5px 8px 5px 0; font-size:8.8pt; text-transform:uppercase;
+     letter-spacing:.05em; color:var(--gris)}
+  td{border-bottom:1px solid var(--linea); padding:5px 8px 5px 0;
+     vertical-align:top}
+  td:last-child,th:last-child{padding-right:0}
+  tr{page-break-inside:avoid}
+  .num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+
+  .dato{color:var(--rojo); font-weight:700}
+  .ok{color:var(--verde); font-weight:700}
+  .warn{color:var(--ambar); font-weight:700}
+
+  .p{display:inline-block; width:1.5em}
+  .nota{border-left:3px solid var(--ambar); background:#fffbeb;
+    padding:9px 13px; margin:12px 0; font-size:9.8pt; border-radius:0 4px 4px 0}
+  .clave{border-left:3px solid var(--rojo); background:#fef2f2;
+    padding:9px 13px; margin:12px 0; font-size:9.8pt; border-radius:0 4px 4px 0}
+  .cierre{border:1px solid var(--linea); background:var(--fondo);
+    padding:12px 15px; margin:16px 0; border-radius:5px}
+
+  .pie{margin-top:30px; padding-top:12px; border-top:1px solid var(--linea);
+    color:var(--gris2); font-size:9pt; text-align:center}
+
+  @page{size:A4; margin:1.4cm}
+  @media print{
+    .hoja{max-width:none; padding:0}
+    h2{page-break-after:avoid; page-break-before:auto}
+    h3,h4{page-break-after:avoid}
+    table,pre,.nota,.clave,.cierre{page-break-inside:avoid}
+    .salto{page-break-before:always}
+    .noprint{display:none}
+  }
+  .noprint{background:#1f2937; color:#fff; padding:9px 14px;
+    border-radius:5px; font-size:9.5pt; margin-bottom:18px}
+</style>
+</head>
+<body>
+<div class="hoja">
+
+<div class="noprint">
+  Para guardarlo en PDF: <b>Ctrl + P</b> → Destino <b>Guardar como PDF</b> →
+  Márgenes <i>predeterminados</i>. Este recuadro no se imprime.
+</div>
+
+<h1>ATENEA2 — Puntos a revisar en el código</h1>
+<p class="sub">Informe para el equipo de desarrollo / software</p>
+
+<div class="meta">
+  <div><b>Instancia:</b> SRVPRORPDB01 (ATENEA2) · SQL Server 2022 · 16 vCPU · 128 GB</div>
+  <div><b>Mediciones:</b> 22–29 de octubre de 2026 · acumulado de 27 días desde el arranque</div>
+  <div><b>Informe técnico completo:</b> <code>informe-atenea2-consolidado.tex</code></div>
+  <div><b>Departamento de IT</b> · Servicios Generales de la Plana</div>
+</div>
+
+<h2>Qué es esto, y qué no es</h2>
+
+<p>La instancia ATENEA2 tiene sesiones bloqueadas el <span class="dato">88 % del
+tiempo</span> durante la jornada laboral. El resto del parque está entre el 0 % y
+el 2 %.</p>
+
+<p>El diagnóstico descartó, por medición directa, que fuera un problema de
+infraestructura o de configuración: paralelismo, TempDB, disco, hipervisor,
+memoria del host y grupo de disponibilidad están todos correctos.
+<b>Lo que queda está en el código y en los procesos programados.</b></p>
+
+<p>Este documento recoge <b>solo lo accionable desde desarrollo</b>. Quedan fuera
+las tareas de administración de base de datos (subir <code>max server
+memory</code>, activar <code>READ_COMMITTED_SNAPSHOT</code>, programar
+estadísticas), que van por otra vía.</p>
+
+<h4>Cómo leer cada punto</h4>
+<p>Cada entrada lleva <b>qué se midió</b> (dato real, no estimación), <b>por qué
+importa</b> y <b>qué mirar</b>. Donde hay una hipótesis sin confirmar, está dicho.</p>
+
+<table>
+<tr><th style="width:3.5em">Prior.</th><th>Significado</th></tr>
+<tr><td>🔴</td><td>Coste medido muy alto y causa identificada. Empezar por aquí.</td></tr>
+<tr><td>🟠</td><td>Coste alto, requiere análisis funcional antes de tocar.</td></tr>
+<tr><td>🟡</td><td>Mejora clara, menor impacto o mayor incertidumbre.</td></tr>
+</table>
+
+<h2>🔴 1. <code>INSERT INTO StnERPArticuloLoteLinea</code> — sin parametrizar</h2>
+<p class="sub">BD: <code>Grupo</code></p>
+
+<table>
+<tr><th>Medida</th><th class="num">Valor</th></tr>
+<tr><td>Variantes del mismo INSERT en caché</td><td class="num dato">6</td></tr>
+<tr><td>Ejecuciones (27 días)</td><td class="num">2.147</td></tr>
+<tr><td><b>CPU total</b></td><td class="num dato">31.000 s (8 h 36 min)</td></tr>
+<tr><td>CPU por ejecución</td><td class="num">~14 s</td></tr>
+<tr><td>Núcleos usados por ejecución</td><td class="num">2,5 (plan paralelo)</td></tr>
+<tr><td>Memoria concedida</td><td class="num">71 MB por ejecución</td></tr>
+<tr><td><b>Filas devueltas</b></td><td class="num dato">0</td></tr>
+</table>
+
+<h4>Por qué importa</h4>
+<p>Es el mayor consumidor de CPU paralela de toda la instancia. Catorce segundos
+de CPU repartidos entre dos núcleos y medio, para no devolver ninguna fila.</p>
+
+<p>Que la misma sentencia aparezca <b>seis veces</b> en la caché de planes
+significa que <b>no está parametrizada</b>: se está construyendo el SQL
+concatenando literales, así que cada variante genera su propio plan, se optimiza
+por separado y ocupa su propia entrada en caché.</p>
+
+<h4>Qué mirar</h4>
+<ul>
+<li>Localizar dónde se construye ese <code>INSERT</code>. Buscar concatenación de
+cadenas o interpolación de valores directamente en el texto SQL.</li>
+<li>Sustituir por comandos parametrizados (<code>SqlParameter</code>, no
+<code>"... WHERE x = '" + valor + "'"</code>).</li>
+<li>Revisar por qué se ejecuta 2.147 veces devolviendo cero filas: si el
+<code>INSERT ... SELECT</code> no encuentra nada que insertar, conviene comprobar
+la condición antes con una consulta barata en lugar de lanzar el plan completo.</li>
+</ul>
+
+<h4>Cómo verificar</h4>
+<p>Tras el cambio, esa sentencia debe aparecer <b>una sola vez</b> en
+<code>sys.dm_exec_query_stats</code>, y el CPU total debe caer de forma evidente.</p>
+
+<h2>🔴 2. <code>ACTUALIZA_EMPRESAS_DIRECCIONES_FICHAS_POR_PROVEEDOR</code></h2>
+<p class="sub">BD: <code>Cenusa</code> · procedimiento almacenado</p>
+
+<table>
+<tr><th>Medida</th><th class="num">Valor</th></tr>
+<tr><td>Ejecuciones (27 días)</td><td class="num">336</td></tr>
+<tr><td>CPU total</td><td class="num">4.828 s</td></tr>
+<tr><td><b>Memoria concedida por ejecución</b></td><td class="num dato">1.171 MB</td></tr>
+<tr><td><b>Aprovechada</b></td><td class="num dato">17,4 %</td></tr>
+<tr><td><b>Lecturas lógicas por ejecución</b></td><td class="num dato">500.544 páginas (~3,8 GB)</td></tr>
+</table>
+
+<h4>Por qué importa</h4>
+<p>Es <b>la sentencia más cara de toda la instancia</b>. Pide más de un gigabyte
+de memoria cada vez que se ejecuta y usa menos de una quinta parte. Esa concesión
+se resta del <i>buffer pool</i> mientras dura, lo que expulsa páginas útiles de
+memoria y contribuye directamente al <i>page life expectancy</i> de 28 segundos
+que mide la instancia.</p>
+
+<p>Recorrer 3,8 GB de datos en cada ejecución apunta a recorridos completos de
+tabla, no a búsquedas por índice.</p>
+
+<h4>Qué mirar</h4>
+<ul>
+<li>Predicados <b>no SARGables</b>: funciones aplicadas a la columna
+(<code>WHERE UPPER(campo) = ...</code>, <code>WHERE CONVERT(...) = ...</code>),
+que impiden usar índices.</li>
+<li>Tipos que no casan entre la columna y el parámetro, que fuerzan conversión
+implícita y también anulan el índice.</li>
+<li><code>DISTINCT</code>, <code>ORDER BY</code> o <code>GROUP BY</code> sobre
+conjuntos grandes, que son lo que dispara una concesión de memoria tan alta.</li>
+<li>Si procesa fila a fila con cursor, reescribir en conjunto.</li>
+</ul>
+
+<h4>Cómo verificar</h4>
+<p>Objetivo: bajar de 1.171 MB concedidos y de 500.544 lecturas por ejecución.
+Ambos se leen directamente de <code>sys.dm_exec_query_stats</code>.</p>
+
+<h2 class="salto">🔴 3. Los 575 disparadores de <code>Cenusa</code></h2>
+<p class="sub">BD: <code>Cenusa</code> (46 GB) · <b>575 disparadores sobre tablas,
+solo 4 desactivados</b></p>
+
+<table>
+<tr><th>Tabla</th><th class="num">Disparadores</th><th class="num">Modificaciones (27 días)</th></tr>
+<tr><td><code>entEMPRESA</code></td><td class="num dato">9</td><td class="num">8.759.807</td></tr>
+<tr><td><code>entALBARAN</code></td><td class="num dato">8</td><td class="num">26.778.967</td></tr>
+<tr><td><code>entMOVIMIENTO</code></td><td class="num dato">8</td><td class="num">5.007.080</td></tr>
+<tr><td><code>entPEDIDO</code></td><td class="num dato">8</td><td class="num">24.107.314</td></tr>
+<tr><td><code>entPEDIDO_DETALLE</code></td><td class="num dato">8</td><td class="num dato">37.738.378</td></tr>
+<tr><td><code>entARTICULO</code></td><td class="num">6</td><td class="num">11.772.885</td></tr>
+</table>
+
+<div class="clave">
+<b>Por qué importa, y es el punto clave de todo el informe.</b> Un disparador
+<b>se ejecuta dentro de la transacción de quien lo dispara</b>. No es trabajo que
+ocurra «después»: es tiempo durante el cual la sentencia original sigue
+reteniendo sus bloqueos.<br><br>
+Cada <code>UPDATE</code> sobre <code>entPEDIDO_DETALLE</code> arrastra ocho
+disparadores antes de poder confirmar. Con 37,7 millones de modificaciones, la
+amplificación es enorme. <b>Esta es la vía más directa por la que el código
+alarga las transacciones y genera bloqueo.</b>
+</div>
+
+<h3>Los más caros, medidos</h3>
+<table>
+<tr><th>Objeto</th><th class="num">Ejecuciones</th><th class="num">CPU</th><th>Detalle</th></tr>
+<tr><td><code>tU_entMOVIMIENTO</code></td><td class="num">212.512 × 6 sent.</td>
+    <td class="num dato">10.268 s</td>
+    <td>seis sentencias en el mismo cuerpo; varias usan el 0 % de la memoria concedida</td></tr>
+<tr><td><code>tU_entALBARAN</code></td><td class="num">21.365</td><td class="num">2.927 s</td>
+    <td><b>31.135 lecturas por disparo</b> (~665 M acumuladas)</td></tr>
+<tr><td><code>tU_entALBARAN</code></td><td class="num dato">1.700.015</td><td class="num">1.851 s</td>
+    <td>otra sentencia del mismo disparador</td></tr>
+<tr><td><code>update entFACTURA</code> ×2</td><td class="num">432.729 c/u</td><td class="num">—</td>
+    <td>58 MB concedidos, <b>1,5 % aprovechado</b></td></tr>
+</table>
+
+<h3><code>AUDITORIA2</code>: la tabla que lo explica</h3>
+<table>
+<tr><th>Medida</th><th class="num">Valor</th></tr>
+<tr><td>Filas</td><td class="num dato">29.708.129</td></tr>
+<tr><td><b>Modificaciones en 9 horas</b></td><td class="num dato">89.149.199 (3× su propio tamaño)</td></tr>
+<tr><td>Muestreo de estadísticas</td><td class="num dato">1,0 %</td></tr>
+</table>
+
+<p>Los disparadores escriben auditoría en cada modificación. Esa escritura ocurre
+dentro de la misma transacción y bajo los mismos bloqueos.</p>
+
+<h4>Qué mirar</h4>
+<ol>
+<li><b>Empezar por <code>tU_entMOVIMIENTO</code> y <code>tU_entALBARAN</code></b>,
+que son los que más CPU consumen. En <code>tU_entALBARAN</code>, la sentencia de
+31.135 lecturas por disparo es el objetivo concreto: casi seguro le falta un
+índice o tiene un predicado no SARGable.</li>
+<li><b>Consolidar.</b> Ocho o nueve disparadores sobre una tabla se ejecutan en
+orden no garantizado y cada uno paga su propio coste de arranque. Fundirlos en
+uno por tabla y por operación es un trabajo mecánico y de bajo riesgo.</li>
+<li><b>Verificar que son de conjunto, no fila a fila.</b> El patrón
+<code>UPDATE x SET ... FROM inserted</code> es correcto; un cursor sobre
+<code>inserted</code>, no. Un disparador que asume una sola fila es además un
+error latente ante actualizaciones masivas.</li>
+<li><b>Sacar la auditoría del camino síncrono.</b> Si <code>AUDITORIA2</code> no
+necesita ser transaccionalmente consistente con el dato, escribirla fuera de la
+transacción (cola, Service Broker, proceso aparte) elimina de golpe una parte
+importante del tiempo de bloqueo.</li>
+</ol>
+
+<div class="nota">
+<b>Advertencia honesta.</b> 575 disparadores son una decisión de arquitectura, no
+un parámetro. <b>No se revisan en una tarde</b> y las decisiones sobre cuáles
+tocar requieren conocimiento funcional que este análisis no tiene. Los puntos 1
+y 2 son los acotados; el 4 es el que más efecto tendría y el que más análisis
+exige.
+</div>
+
+<h2>🟠 4. Jobs que tardan más que su propio intervalo</h2>
+
+<p>De <b>140 planificaciones sub-diarias activas</b> (seis cada minuto, tres cada
+diez segundos), estas se solapan consigo mismas:</p>
+
+<table>
+<tr><th>Job</th><th class="num">Programado</th><th class="num">Media real</th><th class="num">Ocupación</th></tr>
+<tr><td><code>D365_SINCRONIZAR_OMS_DISP_MAX</code></td><td class="num">120 s</td><td class="num">142 s</td><td class="num dato">118 %</td></tr>
+<tr><td><code>D365_SYNC_TRANSFORMAR_DISP_MAX</code></td><td class="num">180 s</td><td class="num">173 s</td><td class="num dato">96 %</td></tr>
+<tr><td><code>D365_ENVIO_RECEPCIONES</code></td><td class="num">60 s</td><td class="num">47 s</td><td class="num warn">78 %</td></tr>
+<tr><td><code>stnSCALE_COPIA_SHIPPING_LOAD</code></td><td class="num">10 s</td><td class="num">7 s</td><td class="num warn">70 %</td></tr>
+<tr><td><code>D365_SINCRONIZAR_DATOS_COMPRAS</code></td><td class="num">300 s</td><td class="num">200 s</td><td class="num warn">67 %</td></tr>
+</table>
+
+<h4>Por qué importa</h4>
+<p><code>D365_SINCRONIZAR_OMS_DISP_MAX</code> está programado cada dos minutos y
+tarda dos minutos y veintidós segundos de media. El «cada dos minutos» es
+ficción: SQL Agent no solapa un job consigo mismo, así que <b>arranca de nuevo en
+cuanto termina, de forma continua, todo el día</b>.</p>
+
+<h4>Qué mirar</h4>
+<p>Estos procesos muy probablemente reprocesan todo el conjunto en cada pasada.</p>
+<ul>
+<li>¿Hay marca de agua (<code>rowversion</code>, fecha de modificación, tabla de
+pendientes) para procesar <b>solo lo que cambió</b>?</li>
+<li>¿Se puede hacer idempotente e incremental en lugar de completo?</li>
+<li>Si el volumen justifica los 142 s, entonces el intervalo de 2 minutos es el
+que está mal y hay que negociarlo con negocio.</li>
+</ul>
+
+<h2>🟠 5. <code>entEFECTO_FacturasCobradas365</code> — vaciar y recargar</h2>
+<p class="sub">BD: <code>Grupo</code></p>
+
+<table>
+<tr><th>Medida</th><th class="num">Valor</th></tr>
+<tr><td>Filas</td><td class="num">1.184.877</td></tr>
+<tr><td><b>Modificaciones en 9 horas</b></td><td class="num dato">31.476.588 (26× su tamaño)</td></tr>
+</table>
+
+<p>Jobs implicados: <code>D365 CARGAR FACTURAS COBRADAS</code> (cada hora),
+<code>ACTUALIZAR_FECHACOBRO_EFECTOS_DESDE_CONCILIADOS</code> (cada 30 min),
+<code>Limpiar Fechas Efectos</code> (cada hora).</p>
+
+<h4>Por qué importa</h4>
+<p>Veintiséis veces el tamaño de la tabla en cambios, en nueve horas. Es el
+patrón clásico de tabla de paso que se vacía y recarga entera. Dos consecuencias
+medidas:</p>
+<ol>
+<li>Las estadísticas de esa tabla <b>nunca son representativas</b>. El umbral de
+actualización automática se cruza en minutos, y eso lleva al optimizador a
+estimar mal y elegir planes paralelos que no hacen falta. El paralelismo supone
+el <span class="dato">58,7 %</span> de todo el tiempo de espera de la instancia.</li>
+<li>Es la candidata más probable al bloqueo de esquema de <b>392 segundos</b> que
+se observó, porque <code>TRUNCATE TABLE</code> toma un bloqueo <code>Sch-M</code>
+incompatible con cualquier lectura. <b>Esto es una hipótesis, no está
+confirmado</b>: demostrarlo requiere capturar el <i>blocked process report</i>.</li>
+</ol>
+
+<h4>Qué mirar</h4>
+<p>Sustituir el vaciado completo por una carga incremental (<code>MERGE</code> o
+inserción/actualización solo de lo que cambió). Si el <code>TRUNCATE</code> es
+imprescindible, al menos acotarlo a una ventana sin usuarios.</p>
+
+<h2>🟠 6. Transacciones abiertas sin cerrar</h2>
+
+<p><b>Medido:</b> 10 sesiones en estado <code>sleeping</code> <b>con transacción
+abierta</b>, reteniendo bloqueos sin ejecutar nada.</p>
+
+<h4>Por qué importa</h4>
+<p>Una sesión dormida con transacción abierta mantiene sus bloqueos
+indefinidamente mientras la aplicación «piensa», espera una respuesta del usuario
+o hace una llamada de red. Es el peor caso posible: bloquea sin estar haciendo
+trabajo.</p>
+
+<h4>Qué mirar</h4>
+<ul>
+<li>Transacciones que abarcan interacción con el usuario o llamadas externas
+(HTTP, servicios, colas). La transacción debe abrirse lo más tarde posible y
+cerrarse lo antes posible.</li>
+<li>Rutas de error sin <code>ROLLBACK</code>: una excepción que escapa sin cerrar
+la transacción deja la sesión así.</li>
+<li>Uso de <code>TransactionScope</code> sin <code>Complete()</code> en algún camino.</li>
+<li>Confirmar que el <code>using</code>/<code>finally</code> cierra la conexión en
+todos los casos.</li>
+</ul>
+
+<h2 class="salto">🟡 7. Consultas que trabajan mucho para no devolver nada</h2>
+
+<table>
+<tr><th>Sentencia</th><th>BD</th><th class="num">Ejec.</th><th class="num">CPU</th><th class="num">Núcleos</th><th class="num">Filas</th></tr>
+<tr><td><code>UPDATE stnERPORDENPREPARACION SET Estado = CASE ...</code></td><td>Grupo</td>
+    <td class="num">1.122</td><td class="num">1.340 s</td><td class="num dato">3,6</td><td class="num dato">0</td></tr>
+<tr><td><code>UPDATE stnERPORDENPREPARACION SET Estado = 2 WHERE idorden NOT IN (...)</code></td><td>Grupo</td>
+    <td class="num">1.122</td><td class="num">919 s</td><td class="num">2,8</td><td class="num dato">0</td></tr>
+<tr><td><code>SELECT a.SourceKey FROM OMS..InventTransOriginBiEntities ...</code></td><td>OMS</td>
+    <td class="num">164</td><td class="num">581 s</td><td class="num">2,0</td><td class="num dato">1</td></tr>
+</table>
+
+<h4>Por qué importa</h4>
+<p>Son planes paralelos, con concesiones de memoria grandes, que acaban
+devolviendo cero o una fila. El <code>NOT IN (SELECT ...)</code> del segundo caso
+es un patrón conocido de mal rendimiento —y de comportamiento sorprendente si la
+subconsulta devuelve <code>NULL</code>—: conviene sustituirlo por
+<code>NOT EXISTS</code>.</p>
+
+<p>El tercero —<b>506 MB de memoria concedida para devolver una fila</b>— es el
+ejemplo más claro de estimación de cardinalidad equivocada de todo el informe.</p>
+
+<h4>Qué mirar</h4>
+<p>Comprobar primero si hay algo que hacer con una consulta barata antes de lanzar
+la actualización completa. Y revisar <code>NOT IN</code> → <code>NOT EXISTS</code>.</p>
+
+<h2>🟡 8. <code>DELETE</code> cruzado guiado por <code>NOLOCK</code></h2>
+
+<pre><code>DELETE b FROM [D365Eventos]..STNAppSuiteInventTrans a WITH (NOLOCK)
+INNER JOIN ...</code></pre>
+
+<p>591 y 597 ejecuciones, ~2.000 s y ~1.255 s de CPU, planes paralelos.</p>
+
+<h4>Por qué importa</h4>
+<p>Más allá del coste, hay un problema de corrección: <code>WITH (NOLOCK)</code>
+permite <b>lecturas sucias</b> —filas no confirmadas, filas leídas dos veces o
+ninguna por movimiento de páginas—. Usar eso para decidir <b>qué borrar</b>
+significa que se pueden estar borrando filas a partir de datos que nunca llegaron
+a existir.</p>
+
+<h4>Qué mirar</h4>
+<p>Quitar el <code>NOLOCK</code> de la rama que determina el borrado. Si se puso
+para evitar bloqueos, la solución correcta es
+<code>READ_COMMITTED_SNAPSHOT</code> (tarea de DBA, ya planificada), no leer
+sucio.</p>
+
+<h2>🟡 9. Índice ausente de mayor impacto</h2>
+
+<table>
+<tr><th>Tabla</th><th>Columna sugerida</th><th class="num">Impacto estimado</th><th class="num">Búsquedas (27 d)</th></tr>
+<tr><td><code>Grupo.cmCargaConfirmadaLogs</code></td><td><code>[TipoAccion]</code></td>
+    <td class="num dato">45.515.122.075</td><td class="num dato">14.889.907</td></tr>
+</table>
+
+<p>Es <b>56 veces</b> mayor que el siguiente candidato de la lista.</p>
+
+<h4>Por qué importa</h4>
+<p>Casi quince millones de búsquedas en 27 días sobre una tabla sin índice
+adecuado significa recorridos completos repetidos. Y un recorrido completo es
+justo lo que dispara un plan paralelo.</p>
+
+<h4>Qué mirar — dos preguntas, en este orden</h4>
+<ol>
+<li><b>¿Por qué se consulta esa tabla 15 millones de veces?</b> Si es una tabla de
+log consultada en un bucle, el arreglo bueno está en el código, no en el índice.</li>
+<li>El índice en sí <b>no debe aplicarse tal cual</b>. Las sugerencias de
+<code>dm_db_missing_index_*</code> son heurísticas: las produce el optimizador
+sobre planes sueltos, sin tener en cuenta los índices que ya existen ni el coste
+de mantenerlos en escritura. Un índice de una sola columna de baja cardinalidad
+como <code>[TipoAccion]</code> rara vez es el definitivo correcto. Hay que
+diseñarlo a partir de las consultas reales.</li>
+</ol>
+
+<h2>🟡 10. Tiempos de espera del cliente</h2>
+
+<p>Se observaron esperas de <b>200 segundos</b> en conexiones
+<code>.Net SqlClient Data Provider</code> desde puestos de usuario, y un caso de
+<b>392 segundos</b>.</p>
+
+<h4>Por qué importa</h4>
+<p>Eso no se percibe como lentitud: se percibe como que la aplicación se ha
+colgado. El usuario cierra, vuelve a entrar, y <b>añade otra sesión a la misma
+cola</b>. Es un bucle de realimentación que empeora el atasco.</p>
+
+<h4>Qué mirar</h4>
+<ul>
+<li><code>CommandTimeout</code> explícito y razonable en las operaciones
+interactivas. El valor por defecto de 30 s es mejor que esperar 200.</li>
+<li>Mensaje al usuario cuando se agota, en lugar de una pantalla congelada.</li>
+<li>Reintento con espera creciente solo donde la operación sea idempotente.</li>
+</ul>
+
+<h2 class="salto">Lo que NO hay que tocar</h2>
+
+<p>Para que nadie persiga fantasmas. Todo esto se <b>midió</b> y está correcto:</p>
+
+<table>
+<tr><th>Hipótesis</th><th>Resultado</th></tr>
+<tr><td>Configuración de paralelismo</td><td><span class="ok">Correcto.</span> MAXDOP 8 sobre 16 núcleos, <i>cost threshold</i> 100</td></tr>
+<tr><td>Estimador de cardinalidad</td><td><span class="ok">Correcto.</span> Nivel de compatibilidad 160, estimador moderno</td></tr>
+<tr><td>Dimensionamiento de TempDB</td><td><span class="ok">Correcto.</span> 8 ficheros, 99 % libre</td></tr>
+<tr><td>Almacenamiento</td><td><span class="ok">Correcto.</span> Peor latencia 9 ms; discos del host por debajo de 1,5 ms</td></tr>
+<tr><td>Hipervisor</td><td><span class="ok">Correcto.</span> <i>Ready time</i> 0,09 %, sin <i>ballooning</i>, host al 40 %</td></tr>
+<tr><td>Grupo de disponibilidad</td><td><span class="ok">Correcto.</span> <code>ASYNCHRONOUS_COMMIT</code>, retraso 0 s</td></tr>
+<tr><td>Falta de CPU u otro proceso</td><td><span class="ok">Correcto.</span> Procesos ajenos a SQL Server: 3–6 %</td></tr>
+</table>
+
+<p><b>El hardware no es el problema. La configuración tampoco.</b></p>
+
+<h2>Cómo medir si ha funcionado</h2>
+
+<table>
+<tr><th>Indicador</th><th class="num">Hoy</th><th class="num">Objetivo</th></tr>
+<tr><td>% de muestras con bloqueo (7 días)</td><td class="num dato">88 %</td><td class="num">&lt; 30 %</td></tr>
+<tr><td>Media de sesiones bloqueadas</td><td class="num">4,9</td><td class="num">&lt; 1</td></tr>
+<tr><td>Pico a las 08:00</td><td class="num">9,0</td><td class="num">&lt; 3</td></tr>
+<tr><td>Esperas <code>CX*</code> sobre el total</td><td class="num dato">58,7 %</td><td class="num">&lt; 30 %</td></tr>
+<tr><td><i>Page life expectancy</i> medio</td><td class="num dato">124 s</td><td class="num">&gt; 300 s</td></tr>
+</table>
+
+<p>Las consultas que producen estas cifras están en la sección 8 del informe
+completo, y son todas de solo lectura.</p>
+
+<div class="cierre">
+<b>Una regla:</b> un cambio cada vez, con 48 horas de observación entre uno y
+otro. Si se tocan varias cosas el mismo día, el resultado será mejor o peor pero
+nadie sabrá por qué, y no habrá forma de deshacer solo la parte que falló.
+</div>
+
+<h2>Un apunte sobre el método</h2>
+
+<p>La tesis de este análisis cambió tres veces. La primera sospecha fue
+«paralelismo mal configurado» y resultó <b>falsa</b>: estaba bien configurado. Lo
+que la sustituyó —paralelismo <i>innecesario</i>, provocado por estimaciones
+erróneas— explica los mismos síntomas pero tiene un remedio completamente
+distinto.</p>
+
+<p>Por eso cada punto de este documento lleva su medición y su forma de
+verificarlo. <b>Las recomendaciones valen lo que valen las mediciones que las
+sostienen</b>, no la plausibilidad del razonamiento. Si al abrir el código algo no
+encaja con lo que aquí se dice, el código manda: avisad y lo revisamos.</p>
+
+<div class="pie">
+Servicios Generales de la Plana · Departamento de IT · 29 de octubre de 2026
+</div>
+
+</div>
+</body>
+</html>
