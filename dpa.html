@@ -381,7 +381,7 @@ body.pres:not(.g) .mstrip{grid-template-columns:1fr;gap:0;text-align:left}
 body.pres:not(.g) .m{
    display:grid;
    grid-template-columns:1fr auto;
-   grid-template-areas:"lab val" "pie val";
+   grid-template-areas:"lab val" "pie val" "rng rng";
    column-gap:16px; row-gap:1px;
    padding:7px 0;
    border-bottom:1px solid rgba(43,61,87,.55)}
@@ -1513,6 +1513,55 @@ function pintarBloqueosTV(insts){
   panel.style.display = "";  // vuelve a mandar el CSS (oculto salvo en TV)
 }
 
+// Barra de rango bajo cada número grande. Un valor suelto no dice nada: 95
+// sesiones puede ser mucho o poco. Aquí se ve dónde cae respecto al mínimo,
+// la media y el pico de la ventana elegida (1h / 6h / 24h).
+//
+// Se calcula del mismo histórico que alimenta las gráficas, así que responde
+// al selector de horas y no hace falta pedir nada al colector.
+//
+// `actual` a null = se usa la última muestra de la serie. Se hace así en
+// "Espera 1 h", porque el número grande es el acumulado de una hora y la
+// serie es por muestra: son magnitudes distintas y mezclarlas engañaría.
+function rangoHTML(clave, actual, dec, sufijo){
+  const pts = histSeries[clave] || [];
+  const corte = Date.now() / 1000 - rangeH * 3600;
+  const d = [];
+  for (let k = 0; k < pts.length; k++){
+    const p = pts[k];
+    if (p && p.t >= corte && typeof p.v === "number") d.push(p.v);
+  }
+  if (d.length < 3) return "";
+
+  let lo = d[0], hi = d[0], suma = 0;
+  for (let k = 0; k < d.length; k++){
+    if (d[k] < lo) lo = d[k];
+    if (d[k] > hi) hi = d[k];
+    suma += d[k];
+  }
+  const media = suma / d.length;
+  const v = (actual === null || actual === undefined) ? d[d.length - 1] : actual;
+  if (hi <= lo) return "";
+
+  const pos = x => Math.max(0, Math.min(100, ((x - lo) / (hi - lo)) * 100));
+  const pv = pos(v), pm = pos(media);
+  const u = sufijo ? " " + sufijo : "";
+
+  return '<div class="rng" title="' +
+    esc("mínimo " + fmt(lo, dec) + " · media " + fmt(media, dec) +
+        " · pico " + fmt(hi, dec) + u + " en las últimas " + rangeH + " h") + '">' +
+    '<span class="rtrack">' +
+      '<i class="rfill" style="width:' + pv + '%"></i>' +
+      '<i class="ravg" style="left:' + pm + '%"></i>' +
+      '<i class="rnow" style="left:' + pv + '%"></i>' +
+    "</span>" +
+    '<span class="rlabs">' +
+      '<span class="rlo">' + fmt(lo, dec) + "</span>" +
+      '<span class="rmd">media ' + fmt(media, dec) + "</span>" +
+      '<span class="rhi">' + fmt(hi, dec) + "</span>" +
+    "</span></div>";
+}
+
 function indicadoresHTML(i){
   return '<div class="ind">' + CAT_INDICADORES.map(c => {
     const lvl = (i.alarmas || {})[c];
@@ -1527,24 +1576,28 @@ function indicadoresHTML(i){
 function tarjeta(i){
   const info = NIVEL_INFO[nivelMostrado(i)] || NIVEL_INFO.caido;
 
-  const metrica = (clase, etiqueta, valor, color, pie) =>
+  const metrica = (clase, etiqueta, valor, color, pie, rng) =>
     '<div class="m ' + clase + '">' +
       '<div class="label">' + etiqueta + "</div>" +
       '<div class="value ' + color + '">' + valor + "</div>" +
       '<div class="pie">' + pie + "</div>" +
+      (rng || "") +
     "</div>";
 
   const tira =
     '<div class="mstrip">' +
       metrica("", "Activas", fmt(i.sesiones_activas, 0), "v-txt",
               "Pico " + fmt(i.sesiones_activas_max, 0) +
-              " · media " + fmt(i.sesiones_activas_media, 0)) +
+              " · media " + fmt(i.sesiones_activas_media, 0),
+              rangoHTML(i.db_id + "|Active Sessions", i.sesiones_activas, 0)) +
       metrica("", "Bloqueadas", fmt(i.sesiones_bloqueadas, 0),
               colorBloqueadas(i.sesiones_bloqueadas),
-              "Pico " + fmt(i.sesiones_bloqueadas_max, 0)) +
+              "Pico " + fmt(i.sesiones_bloqueadas_max, 0),
+              rangoHTML(i.db_id + "|Blocked Sessions", i.sesiones_bloqueadas, 0)) +
       metrica("m-qual", "Espera 1 h",
               fmt(i.wait_total_hora, 0) + "<small>s</small>", colorEspera(i),
-              "Pico " + fmt(i.wait_pico, 1) + " s / 5 min") +
+              "Pico " + fmt(i.wait_pico, 1) + " s / 5 min",
+              rangoHTML(i.db_id + "|Instance Wait Time", null, 1, "s por muestra")) +
     "</div>";
 
   const graficas =
