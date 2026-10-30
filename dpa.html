@@ -440,6 +440,18 @@ body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
 body.pres:not(.g) .zona-b > .act{flex:1 1 auto;min-height:0}
 body.pres:not(.g) .zona-b > .esperas{flex:none;margin-top:12px}
 
+/* Cadena de bloqueo en arbol: el culpable arriba y sus victimas debajo */
+.btab tr.jefe > td{border-top:1px solid rgba(248,113,113,.28)}
+.btab tr.jefe:first-child > td{border-top:none}
+.btab tr.jefe .c-k-spid{font-weight:900}
+.btab tr.hijo .c-k-spid{color:var(--muted)}
+.btab .guia{color:rgba(248,113,113,.55);margin-right:4px;font-weight:400}
+/* cuantas victimas cuelgan de ese bloqueador */
+.btab .vict{display:inline-block;margin-left:5px;padding:0 6px;
+  border-radius:999px;background:rgba(185,28,28,.3);
+  border:1px solid rgba(252,165,165,.5);color:#fecaca;
+  font-size:.78em;font-weight:900}
+
 /* Barra de rango: donde cae el valor actual entre el minimo y el pico */
 .rng{margin-top:6px}
 .rtrack{position:relative;display:block;height:7px;border-radius:4px;
@@ -1306,12 +1318,74 @@ function celdaBloqueo(s, col){
   return esc(v);
 }
 
+// Ordena la lista como un árbol: cada bloqueador seguido de sus víctimas,
+// indentadas. Una lista plana obliga a cruzar SPID con "Bloq. por" a mano, y
+// desde diez metros eso no se hace: con cuatro víctimas de un mismo culpable
+// parecía que había cuatro problemas distintos.
+function ordenarCadena(lista){
+  const filas = (lista || []).slice();
+  if (!filas.length) return filas;
+
+  const porSpid = new Map();
+  filas.forEach(f => { if (f.spid != null) porSpid.set(String(f.spid), f); });
+
+  const hijos = new Map();
+  const raices = [];
+  filas.forEach(f => {
+    const bp = f.bloqueado_por == null ? "" : String(f.bloqueado_por).trim();
+    // si el bloqueador no está en la lista, la fila sube a raíz: mejor
+    // mostrarla suelta que esconderla
+    if (bp && porSpid.has(bp) && bp !== String(f.spid)){
+      if (!hijos.has(bp)) hijos.set(bp, []);
+      hijos.get(bp).push(f);
+    } else {
+      raices.push(f);
+    }
+  });
+
+  const out = [], vistos = new Set();
+  const bajar = (f, n) => {
+    const k = String(f.spid);
+    if (vistos.has(k)) return;      // corta ciclos
+    vistos.add(k);
+    const mios = (hijos.get(k) || []).slice()
+      .sort((a, b) => (b.espera_s || 0) - (a.espera_s || 0));
+    out.push(Object.assign({}, f, {__nivel: n, __victimas: mios.length}));
+    mios.forEach(h => bajar(h, n + 1));
+  };
+
+  raices
+    .sort((a, b) =>
+      ((hijos.get(String(b.spid)) || []).length -
+       (hijos.get(String(a.spid)) || []).length) ||
+      ((b.espera_s || 0) - (a.espera_s || 0)))
+    .forEach(f => bajar(f, 0));
+
+  // red de seguridad: si un ciclo dejó alguna fuera, se añade al final
+  filas.forEach(f => {
+    if (!vistos.has(String(f.spid))){
+      out.push(Object.assign({}, f, {__nivel: 0, __victimas: 0}));
+    }
+  });
+  return out;
+}
+
 function tablaBloqueos(lista, soloTV){
   const cols = COLS_BLOQUEO.filter(c => !soloTV || c.tv);
   const cab = cols.map(c =>
     '<th class="' + c.cls + " c-k-" + c.k + '">' + esc(c.t) + "</th>").join("");
-  const cuerpo = lista.map(s =>
-    "<tr>" + cols.map(c => {
+  const cuerpo = ordenarCadena(lista).map(s =>
+    '<tr class="' + (s.__nivel ? "hijo" : "jefe") + '">' + cols.map(c => {
+      if (c.k === "spid"){
+        return '<td class="' + c.cls + ' c-k-spid"' +
+               (s.__nivel ? ' style="padding-left:' + (s.__nivel * 15) + 'px"' : "") +
+               ">" +
+               (s.__nivel ? '<span class="guia">└</span>' : "") +
+               esc(String(s.spid == null ? "" : s.spid)) +
+               (s.__victimas > 1
+                 ? ' <span class="vict">' + s.__victimas + "</span>" : "") +
+               "</td>";
+      }
       // el programa lleva tooltip propio: el crudo trae el job_id en binario
       const tit = (c.k === "programa" && s.programa)
         ? programaCorto(s.programa, s.job_nombre).tit
@@ -1527,7 +1601,17 @@ function bloqueosHTML(i){
     return '<div class="blk vacio"><h3>Sesiones bloqueadas</h3>' +
            '<div class="nota">Ninguna sesión bloqueada</div></div>';
   }
-  return '<div class="blk"><h3>&#9940; Sesiones bloqueadas</h3>' +
+  // El número grande cuenta víctimas, no culpables. Decir las dos cosas
+  // juntas evita tener que contar filas para entender el "4".
+  const b = i.bloqueos || [];
+  const victimas = b.filter(f => f.rol === "espera").length;
+  const jefes = b.filter(f => f.rol === "bloquea").length;
+  const resumen = (victimas && jefes)
+    ? ' <span class="pista">' + victimas +
+      (victimas === 1 ? " bloqueada" : " bloqueadas") + " por " + jefes +
+      (jefes === 1 ? " sesión" : " sesiones") + "</span>"
+    : "";
+  return '<div class="blk"><h3>&#9940; Sesiones bloqueadas' + resumen + "</h3>" +
          contenidoBloqueos(i, false) + "</div>";
 }
 
