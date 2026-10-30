@@ -367,7 +367,11 @@ body.pres:not(.g) .zona{overflow:hidden;display:flex;flex-direction:column}
 
 /* Las tres metricas se apilan, con la etiqueta al lado del numero: en una
    columna estrecha, tres numeros grandes en fila no caben y se salen. */
-body.pres:not(.g) .zona-a{justify-content:flex-start}
+/* El sobrante se reparte entre los bloques en vez de acumularse en un hueco
+   al pie. Pasa cuando no hay jobs en ejecucion y ese bloque desaparece: con
+   flex-start quedaba un agujero de 200 px abajo. */
+body.pres:not(.g) .zona-a{justify-content:space-between;gap:4px}
+body.pres:not(.g) .zona-a > *{flex:0 0 auto}
 /* Resumen de cabecera. La etiqueta y el numero iban en la misma linea, asi
    que con 45, 0 y 1438 no habia forma de comparar nada: cada cifra empezaba
    en un sitio. Ahora es una rejilla de dos columnas con los numeros
@@ -429,6 +433,11 @@ body.pres:not(.g) .zona-c > .charts{margin-top:auto}
 body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
 body.pres:not(.g) .zona-b > .act{flex:0 1 auto;min-height:0}
 body.pres:not(.g) .zona-b > .esperas{margin-top:auto}
+
+/* marca de que el color de la barra lo impone la alarma de DPA, no el % */
+.gdpa{font-size:.62em;font-weight:800;letter-spacing:.08em;
+  color:#fca5a5;border:1px solid rgba(252,165,165,.45);
+  border-radius:3px;padding:0 3px;margin-left:5px;vertical-align:middle}
 
 /* Bloque compacto de memoria e hipervisor, en la columna izquierda. Solo en
    la diapositiva de instancia: en la vista normal duplicaria las tablas de
@@ -1090,7 +1099,16 @@ function topBloqueosHTML(i){
 }
 
 // Barras de porcentaje. `invertido` para las que "menos es peor".
-function barra(etiqueta, v, aviso, critico, invertido){
+// `alarmaCat` es el nivel que DPA da a la categoría (CPU, Memory...). Se
+// toma SIEMPRE el peor de los dos juicios: el umbral fijo de aquí y el de
+// DPA, que usa su propia línea base histórica.
+//
+// Antes no se cruzaban y la pantalla se contradecía: la etiqueta decía
+// "Memoria en crítico" mientras la barra salía verde al 80 %. Las dos cosas
+// eran ciertas por separado, pero juntas en un televisor se leen como un
+// fallo del panel, y eso cuesta credibilidad justo en lo que quieres que la
+// gente mire.
+function barra(etiqueta, v, aviso, critico, invertido, alarmaCat){
   if (v === null || v === undefined) return "";
   const pct = Math.max(0, Math.min(100, v));
   let cls = "ok";
@@ -1099,8 +1117,22 @@ function barra(etiqueta, v, aviso, critico, invertido){
   } else {
     if (v >= critico) cls = "alarm"; else if (v >= aviso) cls = "warn";
   }
-  return '<div class="g">' +
-           '<span class="gl">' + esc(etiqueta) + "</span>" +
+
+  const peso = {ok: 0, warn: 1, alarm: 2};
+  const dpa = alarmaCat === "CRITICAL" ? "alarm"
+            : (alarmaCat === "WARNING" ? "warn" : "ok");
+  let nota = "";
+  if (peso[dpa] > peso[cls]){
+    nota = "DPA marca esta categoría en " +
+           (dpa === "alarm" ? "crítico" : "aviso") +
+           " por su línea base histórica, aunque el porcentaje aún no llegue " +
+           "al umbral fijo del panel.";
+    cls = dpa;
+  }
+
+  return '<div class="g"' + (nota ? ' title="' + esc(nota) + '"' : "") + ">" +
+           '<span class="gl">' + esc(etiqueta) +
+             (nota ? ' <span class="gdpa">DPA</span>' : "") + "</span>" +
            '<span class="gbar"><i class="' + cls + '" style="width:' + pct + '%"></i></span>' +
            '<span class="gv v-' + cls + '">' + fmt(v, 0) + "%</span>" +
          "</div>";
@@ -1108,12 +1140,13 @@ function barra(etiqueta, v, aviso, critico, invertido){
 
 // Medidores: los porcentajes de un vistazo, que en tabla se leen mal
 function medidoresHTML(i){
+  const a = i.alarmas || {};
   const b = [
-    barra("CPU del servidor",   i.cpu,           75, 90),
-    barra("CPU de la instancia", i.cpu_instancia, 75, 90),
-    barra("Memoria",            i.memoria,       85, 95),
-    barra("Buffer cache hit",   i.cache_hit,     95, 90, true),
-    barra("Signal waits",       i.signal_waits,  20, 30)
+    barra("CPU del servidor",   i.cpu,           75, 90, false, a.CPU),
+    barra("CPU de la instancia", i.cpu_instancia, 75, 90, false, a.CPU),
+    barra("Memoria",            i.memoria,       85, 95, false, a.Memory),
+    barra("Buffer cache hit",   i.cache_hit,     95, 90, true,  a.Memory),
+    barra("Signal waits",       i.signal_waits,  20, 30, false, a.CPU)
   ].join("");
   if (!b) return "";
   return '<div class="gauges"><div class="subt">Medidores</div>' + b + "</div>";
