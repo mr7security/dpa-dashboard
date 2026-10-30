@@ -412,23 +412,27 @@ body.pres:not(.g) .nota-normal{display:none}
   body.pres:not(.g) .cbody{grid-template-columns:1fr 1fr}
 }
 
-/* Las graficas van en la columna derecha, apiladas y compactas. Antes
-   ocupaban una franja a lo ancho del pie y dejaban media pantalla muerta. */
-body.pres:not(.g) .zona-c > .charts{flex:none;display:grid;
-   grid-template-columns:1fr;gap:6px;margin-top:10px;
-   border-top:1px solid #24334a;padding-top:10px}
-body.pres:not(.g) .zona-c > .charts .chartblock{min-width:0}
-body.pres:not(.g) .zona-c > .charts canvas.chart{height:clamp(42px,7.4vh,104px)}
-body.pres:not(.g) .zona-c > .charts .clab{font-size:clamp(.52rem,.68vw,.88rem);
-   margin-bottom:1px}
+/* Las graficas viven en la columna izquierda, apiladas y compactas: son de
+   alto fijo y ahi caben sin pelear con nada. Antes ocupaban una franja a lo
+   ancho del pie y dejaban media pantalla muerta. */
+body.pres:not(.g) .zona-a > .charts{flex:none;display:grid;
+   grid-template-columns:1fr;gap:3px;margin-top:10px;
+   border-top:1px solid #24334a;padding-top:9px}
+body.pres:not(.g) .zona-a > .charts .chartblock{min-width:0}
+body.pres:not(.g) .zona-a > .charts canvas.chart{height:clamp(32px,5vh,74px)}
+body.pres:not(.g) .zona-a > .charts .clab{font-size:clamp(.5rem,.64vw,.82rem);
+   margin-bottom:0;letter-spacing:.06em}
 
 /* La columna derecha reparte: la lista de bloqueos se queda con lo que sobre,
    el ranking y las graficas ocupan lo suyo y no se encogen. */
 body.pres:not(.g) .zona-c{display:flex;flex-direction:column;gap:0}
 body.pres:not(.g) .zona-c > .blk{flex:1 1 auto;min-height:0}
 body.pres:not(.g) .zona-c > .topbloq{flex:none;margin-top:10px}
-/* las graficas se quedan abajo del todo y absorben el hueco que sobre */
-body.pres:not(.g) .zona-c > .charts{margin-top:auto}
+/* Los jobs al pie de la columna derecha: aqui tienen alto de sobra y dejan
+   de cortarse. Si aun asi no caben, la lista recorta y avisa con "y N mas". */
+body.pres:not(.g) .zona-c > .jobs{flex:0 1 auto;min-height:0;overflow:hidden;
+   margin-top:10px}
+body.pres:not(.g) .zona-c > .jobs ul{overflow:hidden}
 /* y la columna del centro reparte igual: tabla arriba, esperas al pie */
 body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
 body.pres:not(.g) .zona-b > .act{flex:0 1 auto;min-height:0}
@@ -450,6 +454,7 @@ body.pres:not(.g) .zona-b > .esperas{margin-top:auto}
 .rlabs{display:flex;justify-content:space-between;margin-top:3px;
   font-size:.62rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .rlabs .rmd{opacity:.85}
+.rlabs .rsuf{opacity:.7;font-style:italic}
 body.pres:not(.g) .rng{grid-area:rng;margin-top:8px}
 body.pres:not(.g) .rtrack{height:clamp(7px,.95vh,12px)}
 body.pres:not(.g) .rtrack .rnow{width:clamp(11px,1.15vw,17px);
@@ -1165,13 +1170,17 @@ function barra(etiqueta, v, aviso, critico, invertido, alarmaCat){
 
 // Medidores: los porcentajes de un vistazo, que en tabla se leen mal
 function medidoresHTML(i){
+  // La alarma de categoria de DPA solo se aplica a la metrica que REPRESENTA
+  // esa categoria, no a todas las que la tocan. Aplicarla a todas pintaba de
+  // rojo "Buffer cache hit" al 99 %, que es un valor excelente: el panel
+  // acababa diciendo que algo buenisimo estaba mal.
   const a = i.alarmas || {};
   const b = [
     barra("CPU del servidor",   i.cpu,           75, 90, false, a.CPU),
-    barra("CPU de la instancia", i.cpu_instancia, 75, 90, false, a.CPU),
+    barra("CPU de la instancia", i.cpu_instancia, 75, 90),
     barra("Memoria",            i.memoria,       85, 95, false, a.Memory),
-    barra("Buffer cache hit",   i.cache_hit,     95, 90, true,  a.Memory),
-    barra("Signal waits",       i.signal_waits,  20, 30, false, a.CPU)
+    barra("Buffer cache hit",   i.cache_hit,     95, 90, true),
+    barra("Signal waits",       i.signal_waits,  20, 30)
   ].join("");
   if (!b) return "";
   return '<div class="gauges"><div class="subt">Medidores</div>' + b + "</div>";
@@ -1481,10 +1490,10 @@ function jobsHTML(i){
            '<div class="nota">Ninguno ahora mismo</div></div>';
   }
   const lentos = j.filter(x => x.lento).length;
-  // Con 13 jobs a la vez la lista desborda la columna. Se muestran los mas
-  // largos (vienen ordenados por hora de arranque, el primero es el que
-  // lleva mas tiempo) y se avisa del resto.
-  const TOPE = 8;
+  // Vienen ordenados por hora de arranque: el primero es el que lleva mas
+  // tiempo corriendo, que es el que interesa. En la columna derecha caben
+  // bastantes mas que cuando el bloque vivia en la izquierda.
+  const TOPE = 16;
   const visibles = j.slice(0, TOPE);
   const resto = j.length - visibles.length;
   const items = visibles.map(x => {
@@ -1583,7 +1592,12 @@ function rangoHTML(clave, actual, dec, sufijo){
     '<span class="rlabs">' +
       '<span class="rlo">' + fmt(lo, dec) + "</span>" +
       '<span class="rmd">media ' + fmt(media, dec) + "</span>" +
-      '<span class="rhi">' + fmt(hi, dec) + "</span>" +
+      '<span class="rhi">' + fmt(hi, dec) +
+        // el sufijo se ve, no solo en el tooltip: en "Espera 1 h" el numero
+        // grande es el acumulado de una hora y la barra va por muestra, y en
+        // una tele nadie pasa el raton por encima para enterarse
+        (sufijo ? ' <span class="rsuf">' + esc(sufijo) + "</span>" : "") +
+      "</span>" +
     "</span></div>";
 }
 
@@ -1965,15 +1979,23 @@ function presReubicarListas(tarjeta){
   // Las graficas se quedan en la columna derecha, apiladas y pequenas: a lo
   // ancho del pie desperdiciaban media pantalla y dejaban la derecha vacia.
   // El ranking de bloqueos va entre la lista y las graficas.
+  const za   = tarjeta.querySelector(".zona-a");
   const graf = tarjeta.querySelector(".charts");
+  const jobs = tarjeta.querySelector(".jobs");
   const top  = tarjeta.querySelector(":scope > .topbloq");
   const esp  = tarjeta.querySelector(":scope > .esperas");
+
   // Las esperas van bajo la lista de sesiones, en el centro: ahi sobra sitio
   // cuando la instancia esta tranquila, que es justo cuando la tabla es corta.
   if (esp && zb) zb.appendChild(esp);
+
+  // Jobs y graficas intercambian columna. Los jobs son de longitud variable
+  // (13 a la vez no es raro) y en la columna izquierda se cortaban; las
+  // graficas son de tamano fijo y caben de sobra ahi.
+  if (za && graf) za.appendChild(graf);
   if (zc){
     if (top)  zc.appendChild(top);
-    if (graf) zc.appendChild(graf);
+    if (jobs) zc.appendChild(jobs);
   }
 }
 
