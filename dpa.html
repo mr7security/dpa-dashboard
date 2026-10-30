@@ -434,6 +434,31 @@ body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
 body.pres:not(.g) .zona-b > .act{flex:0 1 auto;min-height:0}
 body.pres:not(.g) .zona-b > .esperas{margin-top:auto}
 
+/* Barra de rango: donde cae el valor actual entre el minimo y el pico */
+.rng{margin-top:6px}
+.rtrack{position:relative;display:block;height:7px;border-radius:4px;
+  background:rgba(100,116,139,.22);overflow:visible}
+.rtrack .rfill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;
+  background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.6))}
+/* la media, una muesca vertical */
+.rtrack .ravg{position:absolute;top:-3px;bottom:-3px;width:2px;
+  margin-left:-1px;background:rgba(226,232,240,.75);border-radius:1px}
+/* el valor actual, el punto gordo */
+.rtrack .rnow{position:absolute;top:50%;width:11px;height:11px;
+  margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 2px rgba(15,23,42,.85),0 0 7px rgba(255,255,255,.5)}
+.rlabs{display:flex;justify-content:space-between;margin-top:3px;
+  font-size:.62rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.rlabs .rmd{opacity:.85}
+body.pres:not(.g) .rng{grid-area:rng;margin-top:8px}
+body.pres:not(.g) .rtrack{height:clamp(7px,.95vh,12px)}
+body.pres:not(.g) .rtrack .rnow{width:clamp(11px,1.15vw,17px);
+  height:clamp(11px,1.15vw,17px);
+  margin:calc(clamp(11px,1.15vw,17px) / -2) 0 0 calc(clamp(11px,1.15vw,17px) / -2)}
+body.pres:not(.g) .rlabs{font-size:clamp(.56rem,.72vw,.95rem);margin-top:4px}
+/* en el mosaico de Modo TV y en la diapositiva general no hay sitio */
+body.tv .rng{display:none}
+
 /* marca de que el color de la barra lo impone la alarma de DPA, no el % */
 .gdpa{font-size:.62em;font-weight:800;letter-spacing:.08em;
   color:#fca5a5;border:1px solid rgba(252,165,165,.45);
@@ -2343,7 +2368,10 @@ document.querySelectorAll(".btns button[data-h]").forEach(b => {
     rangeH = Number(b.dataset.h);
     document.querySelectorAll(".btns button[data-h]").forEach(x => x.classList.remove("on"));
     b.classList.add("on");
-    pintarTodas();
+    // las barras de rango se calculan sobre esta ventana: hay que rehacer el
+    // HTML, no basta con repintar los canvas
+    if (window.__ultimoEstado) render(window.__ultimoEstado);
+    else pintarTodas();
   });
 });
 
