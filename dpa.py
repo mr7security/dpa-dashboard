@@ -872,19 +872,41 @@ SELECT TOP 6 wait_type,
 FROM   sys.dm_os_wait_stats
 WHERE  waiting_tasks_count > 0
   AND  wait_type NOT IN (
-       'CLR_SEMAPHORE','LAZYWRITER_SLEEP','RESOURCE_QUEUE','SLEEP_TASK',
-       'SLEEP_SYSTEMTASK','SQLTRACE_BUFFER_FLUSH','WAITFOR','LOGMGR_QUEUE',
-       'CHECKPOINT_QUEUE','REQUEST_FOR_DEADLOCK_SEARCH','XE_TIMER_EVENT',
-       'BROKER_TO_FLUSH','BROKER_TASK_STOP','CLR_MANUAL_EVENT',
-       'DIRTY_PAGE_POLL','SP_SERVER_DIAGNOSTICS_SLEEP','QDS_ASYNC_QUEUE',
-       'QDS_SHUTDOWN_QUEUE','XE_DISPATCHER_WAIT','BROKER_EVENTHANDLER',
-       'BROKER_RECEIVE_WAITFOR','BROKER_TRANSMITTER','FT_IFTS_SCHEDULER_IDLE_WAIT',
-       'ONDEMAND_TASK_QUEUE','SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
-       'HADR_WORK_QUEUE','HADR_TIMER_TASK','HADR_NOTIFICATION_DEQUEUE',
-       'HADR_FILESTREAM_IOMGR_IOCOMPLETION','HADR_LOGCAPTURE_WAIT',
-       'HADR_CLUSAPI_CALL','PARALLEL_REDO_WORKER_WAIT_WORK',
-       'PARALLEL_REDO_DRAIN_WORKER','PWAIT_EXTENSIBILITY_CLEANUP_TASK',
-       'VDI_CLIENT_OTHER','PREEMPTIVE_XE_GETTARGETSTATE')
+       -- Esperas inactivas: hilos de fondo que no tienen trabajo. Acumulan
+       -- cifras enormes y no significan NADA sobre el rendimiento. Omitir
+       -- una sola de las gordas falsea todos los porcentajes: con
+       -- SOS_WORK_DISPATCHER dentro, el panel llego a marcar un 86 % y
+       -- escondio el paralelismo, que era el dato real.
+       'BROKER_EVENTHANDLER','BROKER_RECEIVE_WAITFOR','BROKER_TASK_STOP',
+       'BROKER_TO_FLUSH','BROKER_TRANSMITTER','CHECKPOINT_QUEUE',
+       'CHKPT','CLR_AUTO_EVENT','CLR_MANUAL_EVENT','CLR_SEMAPHORE',
+       'DBMIRROR_DBM_EVENT','DBMIRROR_EVENTS_QUEUE','DBMIRROR_WORKER_QUEUE',
+       'DBMIRRORING_CMD','DIRTY_PAGE_POLL','DISPATCHER_QUEUE_SEMAPHORE',
+       'EXECSYNC_INTERNAL','FT_IFTS_SCHEDULER_IDLE_WAIT','FT_IFTSHC_MUTEX',
+       'HADR_CLUSAPI_CALL','HADR_FABRIC_CALLBACK','HADR_FILESTREAM_IOMGR_IOCOMPLETION',
+       'HADR_LOGCAPTURE_WAIT','HADR_NOTIFICATION_DEQUEUE','HADR_TIMER_TASK',
+       'HADR_WORK_QUEUE','KSOURCE_WAKEUP','LAZYWRITER_SLEEP','LOGMGR_QUEUE',
+       'MEMORY_ALLOCATION_EXT','ONDEMAND_TASK_QUEUE',
+       'PARALLEL_REDO_DRAIN_WORKER','PARALLEL_REDO_LOG_CACHE',
+       'PARALLEL_REDO_TRAN_LIST','PARALLEL_REDO_WORKER_SYNC',
+       'PARALLEL_REDO_WORKER_WAIT_WORK','PREEMPTIVE_XE_GETTARGETSTATE',
+       'PVS_PREALLOCATE','PWAIT_ALL_COMPONENTS_INITIALIZED',
+       'PWAIT_DIRECTLOGCONSUMER_GETNEXT','PWAIT_EXTENSIBILITY_CLEANUP_TASK',
+       'QDS_ASYNC_QUEUE','QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP',
+       'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP','QDS_SHUTDOWN_QUEUE',
+       'REDO_THREAD_PENDING_WORK','REQUEST_FOR_DEADLOCK_SEARCH',
+       'RESERVED_MEMORY_ALLOCATION_EXT','RESOURCE_QUEUE',
+       'SERVER_IDLE_CHECK','SLEEP_DBSTARTUP','SLEEP_DCOMSTARTUP',
+       'SLEEP_MASTERDBREADY','SLEEP_MASTERMDREADY','SLEEP_MASTERUPGRADED',
+       'SLEEP_MSDBSTARTUP','SLEEP_SYSTEMTASK','SLEEP_TASK',
+       'SLEEP_TEMPDBSTARTUP','SNI_HTTP_ACCEPT','SOS_WORK_DISPATCHER',
+       'SP_SERVER_DIAGNOSTICS_SLEEP','SQLTRACE_BUFFER_FLUSH',
+       'SQLTRACE_INCREMENTAL_FLUSH_SLEEP','SQLTRACE_WAIT_ENTRIES',
+       'VDI_CLIENT_OTHER','WAIT_FOR_RESULTS','WAIT_XTP_CKPT_CLOSE',
+       'WAIT_XTP_HOST_WAIT','WAIT_XTP_OFFLINE_CKPT_NEW_LOG',
+       'WAIT_XTP_RECOVERY','WAITFOR','WAITFOR_TASKSHUTDOWN',
+       'XE_DISPATCHER_JOIN','XE_DISPATCHER_WAIT','XE_LIVE_TARGET_TVF',
+       'XE_TIMER_EVENT')
 ORDER BY wait_time_ms DESC
 """
 
@@ -976,11 +998,19 @@ class SQLDirecto(object):
 
         self.int_esperas = int(raw.get("intervalo_esperas_segundos", 300))
         self.int_resumen = int(raw.get("intervalo_resumen_segundos", 120))
+        self.int_histbloq = int(raw.get("intervalo_hist_bloqueos_segundos", 600))
+        # Consulta opcional contra una tabla propia de historico de bloqueos.
+        # Se admite una lista de lineas para que el JSON quede legible.
+        sb = raw.get("consulta_historico_bloqueos")
+        if isinstance(sb, (list, tuple)):
+            sb = "\n".join(str(x) for x in sb)
+        self.sql_bloqueos = (sb or "").strip() or None
 
         self._nombres = {}    # instancia -> (ts, {job_id_upper: nombre})
         self._jobs = {}       # instancia -> (ts, [ {...} ])
         self._esperas = {}    # instancia -> (ts, [ {...} ])
         self._resumen = {}    # instancia -> (ts, {...})
+        self._histbloq = {}   # instancia -> (ts, [ {...} ])
         self._fallo = {}      # instancia -> texto del ultimo error
         self._lock = threading.Lock()
 
@@ -1040,6 +1070,41 @@ class SQLDirecto(object):
             return out
         return self._cacheado(self._jobs, instancia, self.int_jobs,
                               SQL_JOBS_ACTIVOS, _t)
+
+    def historico_bloqueos(self, instancia):
+        """
+        Ranking de bloqueos a partir de una tabla propia del cliente, si la
+        hay. En ATENEA2 existe `Grupo.dbo.RUMTRANSACCIONES`, que alimenta el
+        job REVISAR BLOQUEOS y acumula 60 dias de historico: muchisimo mejor
+        que el recuento en memoria del colector, que se reinicia con el
+        servicio.
+
+        La consulta se configura en dpa.json porque el esquema es de cada
+        instalacion. Debe devolver: etiqueta, bd, veces, ultima, espera_max.
+        """
+        if not self.habilitado(instancia) or not self.sql_bloqueos:
+            return None
+        def _t(filas):
+            out = []
+            for f in filas:
+                ult = f.get("ultima")
+                try:
+                    ts = ult.timestamp() if hasattr(ult, "timestamp") else None
+                except Exception:  # noqa: BLE001
+                    ts = None
+                out.append({
+                    "etiqueta": str(f.get("etiqueta") or "").strip(),
+                    # se conserva el program_name crudo para poder resolver
+                    # despues el nombre real del job contra msdb
+                    "programa": str(f.get("programa") or "").strip(),
+                    "bd": str(f.get("bd") or "").strip(),
+                    "veces": int(f.get("veces") or 0),
+                    "ultima": ts,
+                    "espera_max": f.get("espera_max"),
+                })
+            return [x for x in out if x["etiqueta"]]
+        return self._cacheado(self._histbloq, instancia, self.int_histbloq,
+                              self.sql_bloqueos, _t)
 
     def esperas(self, instancia):
         """
@@ -1132,6 +1197,10 @@ class Monitor(object):
         self._bloq_hoy = {}
         self._bloq_dia = None
         self._bloq_lock = threading.Lock()
+        # Aviso al pie del ranking cuando sale de una tabla de historico: esas
+        # tablas suelen cubrir solo ciertas franjas y conviene decirlo, o el
+        # panel da a entender que cubre el dia entero.
+        self.nota_hist_bloqueos = (cfg.get("nota_historico_bloqueos") or "").strip()
         # Opcional: conexion directa a las instancias para lo que DPA no da
         # (nombres de job y jobs en ejecucion). Si no esta configurado o
         # pymssql no esta, queda inerte y el panel funciona igual.
@@ -1225,13 +1294,33 @@ class Monitor(object):
                     log.warning("%s: SQL directo: %s", nombre_inst, e)
                     inst["sql_error"] = str(e)
 
-            # Recuento de bloqueos del dia. Va al final y fuera del try del
-            # SQL directo: no depende de el y debe funcionar igual sin el.
+            # Ranking de bloqueos. Si hay una tabla propia de historico
+            # configurada, manda esa: tiene semanas de datos. Si no, el
+            # recuento en memoria del colector, que empieza de cero en cada
+            # reinicio y solo cubre el dia en curso.
             try:
-                self._tabular_bloqueos(db_id, inst.get("bloqueos"))
-                top = self.top_bloqueos(db_id)
-                if top:
-                    inst["bloqueos_top"] = top
+                hist = None
+                if self.sql.habilitado(nombre_inst):
+                    hist = self.sql.historico_bloqueos(nombre_inst)
+                if hist:
+                    # los JobStep guardan el job_id en binario: se cambia por
+                    # el nombre real para que el ranking sea legible
+                    nom = self.sql.nombres_job(nombre_inst)
+                    if nom:
+                        resolver_jobs(hist, nom)
+                        for f in hist:
+                            if f.get("job_nombre"):
+                                f["etiqueta"] = f["job_nombre"]
+                    inst["bloqueos_top"] = hist
+                    inst["bloqueos_top_origen"] = "historico"
+                    if self.nota_hist_bloqueos:
+                        inst["bloqueos_top_nota"] = self.nota_hist_bloqueos
+                else:
+                    self._tabular_bloqueos(db_id, inst.get("bloqueos"))
+                    top = self.top_bloqueos(db_id)
+                    if top:
+                        inst["bloqueos_top"] = top
+                        inst["bloqueos_top_origen"] = "sesion"
             except Exception as e:  # noqa: BLE001
                 log.warning("%s: recuento de bloqueos: %s", meta.get("name"), e)
 

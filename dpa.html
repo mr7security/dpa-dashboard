@@ -1075,11 +1075,18 @@ function topBloqueosHTML(i){
            '<span class="tb-n">' + fmt(x.veces, 0) + "×</span>" +
            '<span class="tb-h">' + (peor ? esc(peor) : esc(hora)) + "</span></li>";
   }).join("");
-  return '<div class="topbloq"><h3>Lo que más bloquea hoy</h3>' +
+  const hist = i.bloqueos_top_origen === "historico";
+  // Si la tabla de histórico no cubre el día entero hay que decirlo: si no,
+  // el panel da a entender una cobertura que no tiene.
+  const nota = hist
+    ? (i.bloqueos_top_nota
+        ? esc(i.bloqueos_top_nota)
+        : "Histórico propio de la instancia")
+    : "Desde las 00:00, se reinicia con el servicio";
+  return '<div class="topbloq"><h3>' +
+         (hist ? "Lo que más bloquea" : "Lo que más bloquea hoy") + "</h3>" +
          "<ul>" + items + "</ul>" +
-         '<div class="nota">Desde las 00:00 · «×» son incidentes distintos, ' +
-         'a la derecha la espera más larga</div>' +
-         "</div>";
+         '<div class="nota">' + nota + "</div></div>";
 }
 
 // Barras de porcentaje. `invertido` para las que "menos es peor".
