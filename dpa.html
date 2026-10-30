@@ -412,15 +412,15 @@ body.pres:not(.g) .nota-normal{display:none}
   body.pres:not(.g) .cbody{grid-template-columns:1fr 1fr}
 }
 
-/* Las graficas viven en la columna izquierda, apiladas y compactas: son de
-   alto fijo y ahi caben sin pelear con nada. Antes ocupaban una franja a lo
-   ancho del pie y dejaban media pantalla muerta. */
-body.pres:not(.g) .zona-a > .charts{flex:none;display:grid;
-   grid-template-columns:1fr;gap:3px;margin-top:10px;
-   border-top:1px solid #24334a;padding-top:9px}
-body.pres:not(.g) .zona-a > .charts .chartblock{min-width:0}
-body.pres:not(.g) .zona-a > .charts canvas.chart{height:clamp(32px,5vh,74px)}
-body.pres:not(.g) .zona-a > .charts .clab{font-size:clamp(.5rem,.64vw,.82rem);
+/* Las graficas van en la columna central, entre la tabla de sesiones y el
+   bloque de esperas: ahi habia un hueco, la columna es mas ancha y se leen
+   mejor de lejos. En la izquierda se desbordaban. */
+body.pres:not(.g) .zona-b > .charts{flex:none;display:grid;
+   grid-template-columns:repeat(2, minmax(0,1fr));gap:4px 16px;margin-top:12px;
+   border-top:1px solid #24334a;padding-top:10px}
+body.pres:not(.g) .zona-b > .charts .chartblock{min-width:0}
+body.pres:not(.g) .zona-b > .charts canvas.chart{height:clamp(34px,5.4vh,80px)}
+body.pres:not(.g) .zona-b > .charts .clab{font-size:clamp(.5rem,.66vw,.86rem);
    margin-bottom:0;letter-spacing:.06em}
 
 /* La columna derecha reparte: la lista de bloqueos se queda con lo que sobre,
@@ -435,8 +435,10 @@ body.pres:not(.g) .zona-c > .jobs{flex:0 1 auto;min-height:0;overflow:hidden;
 body.pres:not(.g) .zona-c > .jobs ul{overflow:hidden}
 /* y la columna del centro reparte igual: tabla arriba, esperas al pie */
 body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
-body.pres:not(.g) .zona-b > .act{flex:0 1 auto;min-height:0}
-body.pres:not(.g) .zona-b > .esperas{margin-top:auto}
+/* la tabla se queda con el alto sobrante: asi crece con la pantalla en vez
+   de dejar un hueco entre ella y las graficas */
+body.pres:not(.g) .zona-b > .act{flex:1 1 auto;min-height:0}
+body.pres:not(.g) .zona-b > .esperas{flex:none;margin-top:12px}
 
 /* Barra de rango: donde cae el valor actual entre el minimo y el pico */
 .rng{margin-top:6px}
@@ -598,7 +600,8 @@ body.pres:not(.g) .blk .c-k-trans_abiertas,
 body.pres:not(.g) .blk .c-k-host,
 body.pres:not(.g) .blk .c-k-bd{display:none}
 body.pres:not(.g) .act .scroll{max-height:none;overflow:hidden}
-body.pres:not(.g) .act tbody tr:nth-child(n+13){display:none}
+/* a la par con PRES_FILAS del script */
+body.pres:not(.g) .act tbody tr:nth-child(n+15){display:none}
 body.pres:not(.g) .blk tbody tr:nth-child(n+9){display:none}
 .solo-pres{display:none}
 body.pres:not(.g) .solo-pres{display:block}
@@ -1913,7 +1916,9 @@ function tickHist(estado){
 // --------------------------------------------------- modo presentacion
 
 const PRES_SEG = 15;    // segundos por diapositiva
-const PRES_FILAS = 12;  // filas visibles por tabla, sin scroll
+// Filas visibles por tabla, sin scroll. Si se cambia, hay que tocar tambien
+// la regla CSS `tbody tr:nth-child(n+N)` que las recorta: deben ir a la par.
+const PRES_FILAS = 14;
 
 // Orden de rotacion. Se comparan con el nombre corto (el de Modo TV). Las
 // instancias que no aparezcan aqui se anaden al final por orden alfabetico.
@@ -1994,10 +1999,16 @@ function presReubicarListas(tarjeta){
   // cuando la instancia esta tranquila, que es justo cuando la tabla es corta.
   if (esp && zb) zb.appendChild(esp);
 
-  // Jobs y graficas intercambian columna. Los jobs son de longitud variable
-  // (13 a la vez no es raro) y en la columna izquierda se cortaban; las
-  // graficas son de tamano fijo y caben de sobra ahi.
-  if (za && graf) za.appendChild(graf);
+  // Reparto final de las tres columnas:
+  //   izquierda -> resumen, medidores, memoria/hipervisor, SQL Agent
+  //   centro    -> sesiones activas, graficas, esperas
+  //   derecha   -> bloqueos, ranking, jobs en ejecucion
+  //
+  // Las graficas acabaron en el centro porque la izquierda se desbordaba y
+  // aqui habia un hueco entre la tabla y el bloque de esperas. Ademas esta
+  // columna es mas ancha, asi que se leen mejor desde lejos.
+  if (zb && graf && esp) zb.insertBefore(graf, esp);
+  else if (zb && graf) zb.appendChild(graf);
   if (zc){
     if (top)  zc.appendChild(top);
     if (jobs) zc.appendChild(jobs);
