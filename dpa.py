@@ -910,6 +910,64 @@ WHERE  waiting_tasks_count > 0
 ORDER BY wait_time_ms DESC
 """
 
+# Cadenas de bloqueo en vivo.
+#
+# DPA da el CONTADOR de sesiones bloqueadas por una metrica que muestrea cada
+# minuto, y la LISTA por una pagina HTML que se lee en otro instante. Las dos
+# cosas nunca coinciden: el contador puede decir 23 y la lista mostrar 3.
+#
+# Esta consulta devuelve ambas del MISMO instante, asi que el numero grande y
+# la tabla concuerdan siempre. Ademas es barata: dm_exec_requests vive en
+# memoria, no toca disco.
+SQL_BLOQUEOS_VIVO = """
+WITH esp AS (
+    SELECT r.session_id, r.blocking_session_id, r.database_id, r.wait_type,
+           r.wait_time, r.status, r.command, r.open_transaction_count,
+           r.wait_resource
+    FROM   sys.dm_exec_requests r
+    WHERE  r.blocking_session_id <> 0
+)
+SELECT TOP 30
+       'espera'                                   AS rol,
+       e.session_id                               AS spid,
+       CONVERT(VARCHAR(12), e.blocking_session_id) AS bloqueado_por,
+       s.login_name                               AS login,
+       s.host_name                                AS host,
+       s.program_name                             AS programa,
+       DB_NAME(e.database_id)                     AS bd,
+       e.command                                  AS comando,
+       e.wait_type                                AS espera,
+       CONVERT(VARCHAR(120), e.wait_resource)     AS recurso,
+       e.wait_time / 1000.0                       AS espera_s,
+       e.open_transaction_count                   AS trans_abiertas,
+       e.status                                   AS estado
+FROM   esp e
+JOIN   sys.dm_exec_sessions s ON s.session_id = e.session_id
+UNION ALL
+SELECT 'bloquea',
+       s.session_id,
+       '',
+       s.login_name,
+       s.host_name,
+       s.program_name,
+       DB_NAME(ISNULL(r.database_id, s.database_id)),
+       ISNULL(r.command, ''),
+       -- una cabeza de bloqueo sin peticion activa es una sesion dormida con
+       -- transaccion abierta: lo peor que puede pasar, y hay que verlo
+       ISNULL(r.wait_type, CASE WHEN s.status = 'sleeping'
+                                THEN 'DORMIDA CON TRANSACCION' ELSE '' END),
+       CONVERT(VARCHAR(120), ISNULL(r.wait_resource, '')),
+       ISNULL(r.wait_time, 0) / 1000.0,
+       ISNULL(r.open_transaction_count, s.open_transaction_count),
+       ISNULL(r.status, s.status)
+FROM   sys.dm_exec_sessions s
+LEFT JOIN sys.dm_exec_requests r ON r.session_id = s.session_id
+WHERE  s.session_id IN (SELECT blocking_session_id FROM esp)
+  AND  s.session_id NOT IN (SELECT session_id FROM esp)
+ORDER BY rol, espera_s DESC
+"""
+
+
 # Dos contadores baratos: cuantos planes hay en cache (sube cuando el SQL no
 # va parametrizado) y como ha ido el SQL Agent hoy.
 # Una sola pasada por cada origen: la cache de planes puede tener cientos de
@@ -999,6 +1057,9 @@ class SQLDirecto(object):
         self.int_esperas = int(raw.get("intervalo_esperas_segundos", 300))
         self.int_resumen = int(raw.get("intervalo_resumen_segundos", 120))
         self.int_histbloq = int(raw.get("intervalo_hist_bloqueos_segundos", 600))
+        # el bloqueo en vivo es lo que mas rapido cambia y la consulta es
+        # barata: por defecto se refresca en cada ciclo del colector
+        self.int_bloqvivo = int(raw.get("intervalo_bloqueos_vivo_segundos", 10))
         # Consulta opcional contra una tabla propia de historico de bloqueos.
         # Se admite una lista de lineas para que el JSON quede legible.
         sb = raw.get("consulta_historico_bloqueos")
@@ -1011,6 +1072,7 @@ class SQLDirecto(object):
         self._esperas = {}    # instancia -> (ts, [ {...} ])
         self._resumen = {}    # instancia -> (ts, {...})
         self._histbloq = {}   # instancia -> (ts, [ {...} ])
+        self._bloqvivo = {}   # instancia -> (ts, [ {...} ])
         self._fallo = {}      # instancia -> texto del ultimo error
         self._lock = threading.Lock()
 
@@ -1070,6 +1132,37 @@ class SQLDirecto(object):
             return out
         return self._cacheado(self._jobs, instancia, self.int_jobs,
                               SQL_JOBS_ACTIVOS, _t)
+
+    def bloqueos_vivo(self, instancia):
+        """
+        Cadena de bloqueo del momento. Devuelve la lista con el mismo formato
+        que el parseo del HTML de DPA, para que el panel no note la
+        diferencia, pero tomada de un solo instante.
+        """
+        if not self.habilitado(instancia):
+            return None
+        def _t(filas):
+            out = []
+            for f in filas:
+                bp = str(f.get("bloqueado_por") or "").strip()
+                out.append({
+                    "rol": f.get("rol"),
+                    "spid": f.get("spid"),
+                    "bloqueado_por": bp or None,
+                    "login": (f.get("login") or "").strip(),
+                    "host": (f.get("host") or "").strip(),
+                    "programa": (f.get("programa") or "").strip(),
+                    "bd": (f.get("bd") or "").strip(),
+                    "comando": (f.get("comando") or "").strip(),
+                    "espera": (f.get("espera") or "").strip(),
+                    "recurso": (f.get("recurso") or "").strip(),
+                    "espera_s": float(f.get("espera_s") or 0),
+                    "trans_abiertas": f.get("trans_abiertas"),
+                    "estado": (f.get("estado") or "").strip(),
+                })
+            return out
+        return self._cacheado(self._bloqvivo, instancia, self.int_bloqvivo,
+                              SQL_BLOQUEOS_VIVO, _t)
 
     def historico_bloqueos(self, instancia):
         """
@@ -1272,6 +1365,20 @@ class Monitor(object):
             nombre_inst = meta.get("name")
             if self.sql.habilitado(nombre_inst):
                 try:
+                    # Bloqueo en vivo: contador Y lista del mismo instante.
+                    # Sustituye a los dos datos de DPA, que se tomaban por
+                    # separado y nunca cuadraban entre si.
+                    viv = self.sql.bloqueos_vivo(nombre_inst)
+                    if viv is not None:
+                        inst["bloqueos"] = viv
+                        inst["sesiones_bloqueadas"] = sum(
+                            1 for f in viv if f.get("rol") == "espera")
+                        inst["bloqueos_origen"] = "sql"
+                        inst.pop("bloqueos_error", None)
+                        # el semaforo se calculo con el dato de DPA: hay que
+                        # rehacerlo con el numero bueno
+                        inst["nivel"], inst["avisos"] = evaluar_estado(inst)
+
                     nombres = self.sql.nombres_job(nombre_inst)
                     if nombres:
                         resolver_jobs(inst.get("sesiones_detalle"), nombres)

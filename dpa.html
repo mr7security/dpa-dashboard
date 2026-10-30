@@ -1475,6 +1475,11 @@ function contenidoBloqueos(i, soloTV){
     return '<div class="nota">No he podido leer el detalle: ' +
            esc(i.bloqueos_error) + "</div>";
   }
+  // Con el dato en vivo por SQL el contador y la lista salen del mismo
+  // instante y siempre cuadran, asi que esta explicacion sobra. Solo hace
+  // falta cuando el numero viene de la metrica de DPA (muestreo por minuto)
+  // y la lista de otra lectura posterior.
+  if (i.bloqueos_origen === "sql") return "";
   return '<div class="nota">' + fmt(i.sesiones_bloqueadas, 0) +
          " en el último minuto · ya resueltos, ahora mismo no hay ninguna " +
          "sesión bloqueando</div>";
