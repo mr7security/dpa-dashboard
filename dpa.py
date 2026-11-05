@@ -920,82 +920,129 @@ ORDER BY wait_time_ms DESC
 # la tabla concuerdan siempre. Ademas es barata: dm_exec_requests vive en
 # memoria, no toca disco.
 SQL_BLOQUEOS_VIVO = """
-WITH esp AS (
-    SELECT r.session_id, r.blocking_session_id, r.database_id, r.wait_type,
-           r.wait_time, r.status, r.command, r.open_transaction_count,
-           r.wait_resource, r.sql_handle,
-           r.statement_start_offset, r.statement_end_offset
-    FROM   sys.dm_exec_requests r
-    WHERE  r.blocking_session_id <> 0
-)
-SELECT TOP 30
-       'espera'                                   AS rol,
-       e.session_id                               AS spid,
-       CONVERT(VARCHAR(12), e.blocking_session_id) AS bloqueado_por,
-       s.login_name                               AS login,
-       s.host_name                                AS host,
-       s.program_name                             AS programa,
-       DB_NAME(e.database_id)                     AS bd,
-       e.command                                  AS comando,
-       e.wait_type                                AS espera,
-       CONVERT(VARCHAR(120), e.wait_resource)     AS recurso,
-       e.wait_time / 1000.0                       AS espera_s,
-       e.open_transaction_count                   AS trans_abiertas,
-       e.status                                   AS estado,
-       -- si la sentencia corre dentro de un procedimiento, objectid apunta a
-       -- el; en SQL suelto viene NULL
-       CONVERT(VARCHAR(140), OBJECT_NAME(t.objectid, t.dbid)) AS procedimiento,
-       CONVERT(VARCHAR(400), LTRIM(SUBSTRING(t.text,
-           (e.statement_start_offset / 2) + 1,
-           ((CASE e.statement_end_offset WHEN -1 THEN DATALENGTH(t.text)
-             ELSE e.statement_end_offset END - e.statement_start_offset) / 2) + 1
-       )))                                        AS sentencia,
-       0                                          AS sentencia_vieja
-FROM   esp e
-JOIN   sys.dm_exec_sessions s ON s.session_id = e.session_id
-OUTER APPLY sys.dm_exec_sql_text(e.sql_handle) t
-UNION ALL
-SELECT 'bloquea',
-       s.session_id,
-       '',
-       s.login_name,
-       s.host_name,
-       s.program_name,
-       DB_NAME(ISNULL(r.database_id, s.database_id)),
-       ISNULL(r.command, ''),
-       -- una cabeza de bloqueo sin peticion activa es una sesion dormida con
-       -- transaccion abierta: lo peor que puede pasar, y hay que verlo
-       ISNULL(r.wait_type, CASE WHEN s.status = 'sleeping'
-                                THEN 'DORMIDA CON TRANSACCION' ELSE '' END),
-       CONVERT(VARCHAR(120), ISNULL(r.wait_resource, '')),
-       ISNULL(r.wait_time, 0) / 1000.0,
-       ISNULL(r.open_transaction_count, s.open_transaction_count),
-       ISNULL(r.status, s.status),
-       CONVERT(VARCHAR(140), OBJECT_NAME(t2.objectid, t2.dbid)),
-       -- sin peticion activa no hay sentencia en curso: se recurre a la
-       -- ULTIMA que ejecuto esa conexion
-       CONVERT(VARCHAR(400), LTRIM(SUBSTRING(t2.text,
-           CASE WHEN r.statement_start_offset IS NULL THEN 1
-                ELSE (r.statement_start_offset / 2) + 1 END,
-           CASE WHEN r.statement_end_offset IS NULL THEN 400
-                ELSE ((CASE r.statement_end_offset WHEN -1 THEN DATALENGTH(t2.text)
-                       ELSE r.statement_end_offset END
-                       - r.statement_start_offset) / 2) + 1 END
-       ))),
-       CASE WHEN r.session_id IS NULL THEN 1 ELSE 0 END
+SET NOCOUNT ON;
+
+IF OBJECT_ID('tempdb..#esp') IS NOT NULL DROP TABLE #esp;
+IF OBJECT_ID('tempdb..#ses') IS NOT NULL DROP TABLE #ses;
+IF OBJECT_ID('tempdb..#cad') IS NOT NULL DROP TABLE #cad;
+
+-- Esperas de TODAS las tareas, no solo del hilo principal.
+-- dm_exec_requests solo informa del hilo principal: en una consulta paralela
+-- el hilo que espera el bloqueo es otro, y el principal aparece esperando
+-- CXCONSUMER/CXPACKET y SIN bloqueador. Con el 65 % de las esperas de esta
+-- instancia en paralelismo, mirar solo dm_exec_requests se deja fuera buena
+-- parte de los bloqueos reales.
+SELECT wt.session_id, wt.blocking_session_id, wt.wait_type,
+       wt.wait_duration_ms, wt.resource_description,
+       hilos = COUNT(*) OVER (PARTITION BY wt.session_id),
+       rn = ROW_NUMBER() OVER (PARTITION BY wt.session_id
+            ORDER BY CASE WHEN wt.wait_type LIKE 'LCK%' THEN 0 ELSE 1 END,
+                     wt.wait_duration_ms DESC)
+INTO   #esp
+FROM   sys.dm_os_waiting_tasks wt
+WHERE  wt.session_id IS NOT NULL
+  AND  wt.blocking_session_id IS NOT NULL
+  -- los hilos paralelos de una sesion bloqueandose entre si no son bloqueo
+  AND  wt.blocking_session_id <> wt.session_id;
+
+-- Foto unica: leer las DMV varias veces deja la cadena incoherente
+SELECT s.session_id,
+       blocked_by = COALESCE(e.blocking_session_id,
+                      NULLIF(NULLIF(r.blocking_session_id, 0), s.session_id)),
+       wait_type  = COALESCE(e.wait_type, r.wait_type),
+       wait_ms    = COALESCE(e.wait_duration_ms, r.wait_time),
+       recurso    = COALESCE(e.resource_description, r.wait_resource),
+       hilos      = e.hilos,
+       r.command, r.sql_handle, r.request_id,
+       r.statement_start_offset, r.statement_end_offset,
+       estado     = COALESCE(r.status, s.status),
+       s.login_name, s.nt_user_name, s.host_name, s.program_name,
+       bd = DB_NAME(COALESCE(r.database_id, s.database_id)),
+       tran_abiertas = s.open_transaction_count,
+       s.last_request_end_time
+INTO   #ses
 FROM   sys.dm_exec_sessions s
 LEFT JOIN sys.dm_exec_requests r ON r.session_id = s.session_id
-OUTER APPLY (
-    SELECT TOP 1 c.most_recent_sql_handle
-    FROM   sys.dm_exec_connections c
-    WHERE  c.session_id = s.session_id
-    ORDER BY c.connect_time DESC
-) cn
-OUTER APPLY sys.dm_exec_sql_text(
-    ISNULL(r.sql_handle, cn.most_recent_sql_handle)) t2
-WHERE  s.session_id IN (SELECT blocking_session_id FROM esp)
-  AND  s.session_id NOT IN (SELECT session_id FROM esp)
-ORDER BY rol, espera_s DESC
+LEFT JOIN #esp e ON e.session_id = s.session_id AND e.rn = 1;
+
+WITH cadena AS (
+    -- cabezas: bloquean a alguien y nadie las bloquea a ellas
+    SELECT h.session_id, cabeza = h.session_id, nivel = 0
+    FROM   #ses h
+    WHERE  h.blocked_by IS NULL
+      AND  EXISTS (SELECT 1 FROM #ses b WHERE b.blocked_by = h.session_id)
+    UNION
+    -- cabezas que no son una sesion (-2 transaccion distribuida huerfana,
+    -- -3, -4, -5 latch) o sesiones que ya terminaron: sin esto sus
+    -- bloqueados no aparecian por ningun lado
+    SELECT DISTINCT b.blocked_by, b.blocked_by, 0
+    FROM   #ses b
+    WHERE  b.blocked_by IS NOT NULL
+      AND  NOT EXISTS (SELECT 1 FROM #ses x WHERE x.session_id = b.blocked_by)
+    UNION ALL
+    SELECT b.session_id, c.cabeza, c.nivel + 1
+    FROM   #ses b
+    JOIN   cadena c ON b.blocked_by = c.session_id
+    WHERE  c.nivel < 50
+)
+SELECT session_id, cabeza, nivel
+INTO   #cad
+FROM   cadena
+OPTION (MAXRECURSION 100);
+
+-- Bloqueados sin cabeza: forman un ciclo (A espera a B y B a A)
+INSERT #cad (session_id, cabeza, nivel)
+SELECT s.session_id, -1, 0
+FROM   #ses s
+WHERE  s.blocked_by IS NOT NULL
+  AND  NOT EXISTS (SELECT 1 FROM #cad c WHERE c.session_id = s.session_id);
+
+SELECT TOP 40
+       rol = CASE WHEN s.blocked_by IS NULL THEN 'bloquea' ELSE 'espera' END,
+       spid = c.session_id,
+       nivel = c.nivel,
+       cabeza = CASE WHEN c.cabeza = -1 THEN 'CICLO'
+                     ELSE CONVERT(VARCHAR(12), c.cabeza) END,
+       bloqueado_por = ISNULL(CONVERT(VARCHAR(12), s.blocked_by), ''),
+       login = ISNULL(NULLIF(s.nt_user_name, ''), s.login_name),
+       host = s.host_name,
+       programa = s.program_name,
+       bd = s.bd,
+       comando = ISNULL(s.command, ''),
+       espera = ISNULL(s.wait_type,
+                  CASE WHEN s.estado = 'sleeping' AND s.tran_abiertas > 0
+                       THEN 'DORMIDA CON TRANSACCION' ELSE '' END),
+       recurso = CONVERT(VARCHAR(140), ISNULL(s.recurso, '')),
+       espera_s = ISNULL(s.wait_ms, 0) / 1000.0,
+       trans_abiertas = s.tran_abiertas,
+       hilos = s.hilos,
+       estado = CASE WHEN s.session_id IS NOT NULL THEN s.estado
+                     WHEN c.session_id = -2 THEN 'TRAN. DISTRIBUIDA HUERFANA'
+                     WHEN c.session_id = -3 THEN 'RECUPERACION DIFERIDA'
+                     WHEN c.session_id = -4 THEN 'LATCH EN TRANSICION'
+                     WHEN c.session_id = -5 THEN 'DUENO DE LATCH DESCONOCIDO'
+                     ELSE 'SESION YA NO EXISTE' END,
+       inactiva_desde = s.last_request_end_time,
+       procedimiento = CONVERT(VARCHAR(140), OBJECT_NAME(t.objectid, t.dbid)),
+       sentencia = CONVERT(VARCHAR(400), LTRIM(
+           CASE WHEN s.sql_handle IS NOT NULL THEN
+             SUBSTRING(t.text, s.statement_start_offset / 2 + 1,
+               (CASE s.statement_end_offset WHEN -1 THEN DATALENGTH(t.text)
+                     ELSE s.statement_end_offset END
+                - s.statement_start_offset) / 2 + 1)
+           END)),
+       -- lo que el CLIENTE pidio, que no es lo que se esta ejecutando: aqui
+       -- pone "exec D365_CargarFacturasCobradas" mientras la sentencia en
+       -- curso es el TRUNCATE de dentro del procedimiento
+       inputbuffer = CONVERT(VARCHAR(400), ib.event_info),
+       sentencia_vieja = CASE WHEN s.sql_handle IS NULL THEN 1 ELSE 0 END
+FROM   #cad c
+LEFT JOIN #ses s ON s.session_id = c.session_id
+OUTER APPLY sys.dm_exec_sql_text(s.sql_handle) t
+OUTER APPLY (SELECT event_info
+             FROM   sys.dm_exec_input_buffer(c.session_id, NULL)
+             WHERE  c.session_id > 0) ib
+ORDER BY c.cabeza, c.nivel, s.wait_ms DESC
 """
 
 
@@ -1019,6 +1066,15 @@ CROSS JOIN (
       AND  run_date = CONVERT(INT, CONVERT(VARCHAR(8), GETDATE(), 112))
 ) AS j
 """
+
+
+def _iso(valor):
+    """datetime de pymssql -> epoch en segundos, o None. json no serializa
+    datetime y el panel trabaja con epoch."""
+    try:
+        return valor.timestamp() if hasattr(valor, "timestamp") else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 class ClienteSQL(object):
@@ -1193,9 +1249,20 @@ class SQLDirecto(object):
                     "procedimiento": (f.get("procedimiento") or "").strip(),
                     "sentencia": " ".join(
                         (f.get("sentencia") or "").split())[:400],
+                    # lo que pidio el cliente, no lo que se esta ejecutando
+                    "inputbuffer": " ".join(
+                        (f.get("inputbuffer") or "").split())[:400],
                     # marca de que la sentencia es la ULTIMA que ejecuto la
                     # sesion, no necesariamente la que tomo el bloqueo
                     "sentencia_vieja": bool(f.get("sentencia_vieja")),
+                    # el servidor ya devuelve la cadena ordenada y con su
+                    # profundidad: el panel no tiene que reconstruirla
+                    "nivel": int(f.get("nivel") or 0),
+                    "cabeza": (f.get("cabeza") or "").strip(),
+                    # cuantos hilos de esa sesion estan esperando: en una
+                    # consulta paralela pueden ser varios
+                    "hilos": f.get("hilos"),
+                    "inactiva_desde": _iso(f.get("inactiva_desde")),
                 })
             return out
         return self._cacheado(self._bloqvivo, instancia, self.int_bloqvivo,

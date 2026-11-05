@@ -1342,6 +1342,22 @@ function ordenarCadena(lista){
   const filas = (lista || []).slice();
   if (!filas.length) return filas;
 
+  // Si el dato viene por SQL directo, el servidor ya mandó la cadena ordenada
+  // y con su profundidad, resuelta con un CTE recursivo que además maneja
+  // ciclos y bloqueadores que no son sesiones (-2 transacción distribuida
+  // huérfana, -3, -4, -5 latch). Reconstruirla aquí sería peor.
+  if (filas[0] && filas[0].nivel !== undefined && filas[0].nivel !== null){
+    const hijos = {};
+    filas.forEach(f => {
+      const bp = f.bloqueado_por == null ? "" : String(f.bloqueado_por).trim();
+      if (bp) hijos[bp] = (hijos[bp] || 0) + 1;
+    });
+    return filas.map(f => Object.assign({}, f, {
+      __nivel: f.nivel || 0,
+      __victimas: hijos[String(f.spid)] || 0
+    }));
+  }
+
   const porSpid = new Map();
   filas.forEach(f => { if (f.spid != null) porSpid.set(String(f.spid), f); });
 
@@ -1407,19 +1423,27 @@ function tablaBloqueos(lista, soloTV){
       if (c.k === "procedimiento"){
         const p = String(s.procedimiento || "");
         const q = String(s.sentencia || "");
-        const tit = (p ? p + "\n\n" : "") + (q || "sin sentencia disponible") +
+        const ib = String(s.inputbuffer || "");
+        const tit =
+          (p ? "OBJETO\n" + p + "\n\n" : "") +
+          (q ? "EJECUTANDO AHORA\n" + q + "\n\n" : "") +
+          (ib ? "LO QUE PIDIÓ EL CLIENTE\n" + ib : "") +
+          (!p && !q && !ib ? "sin sentencia disponible" : "") +
           (s.sentencia_vieja
-            ? "\n\n⚠ Es la ÚLTIMA sentencia que ejecutó esta sesión, no " +
-              "necesariamente la que tomó el bloqueo: la sesión está " +
-              "inactiva con la transacción abierta."
+            ? "\n\n⚠ La sesión no tiene petición activa: lo de arriba es lo " +
+              "ÚLTIMO que ejecutó, no necesariamente lo que tomó el bloqueo."
             : "");
         // Sin nombre de procedimiento la celda no debe quedarse en "ad-hoc",
         // que no dice nada: se enseña el principio de la sentencia, que es
         // lo que de verdad identifica qué está corriendo.
+        // Orden de preferencia: el nombre del objeto, luego lo que pidió el
+        // cliente (`exec Algo`, que identifica el punto de entrada mejor que
+        // la sentencia interna) y por último la sentencia en curso.
         let vis;
-        if (p)      vis = '<span class="proc">' + esc(p) + "</span>";
-        else if (q) vis = '<span class="proc sql">' + esc(q.slice(0, 80)) + "</span>";
-        else        vis = '<span class="proc adhoc">—</span>';
+        if (p)       vis = '<span class="proc">' + esc(p) + "</span>";
+        else if (ib) vis = '<span class="proc sql">' + esc(ib.slice(0, 80)) + "</span>";
+        else if (q)  vis = '<span class="proc sql">' + esc(q.slice(0, 80)) + "</span>";
+        else         vis = '<span class="proc adhoc">—</span>';
         return '<td class="' + c.cls + ' c-k-procedimiento" title="' +
                esc(tit) + '">' + vis +
                (s.sentencia_vieja ? ' <span class="vieja">últ.</span>' : "") +
