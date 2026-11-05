@@ -541,6 +541,30 @@ body.pres:not(.g) .claves .subt{
 .kv .v{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 body.tv .kv,body.pres .kv{font-size:clamp(.62rem,.86vw,1.2rem)}
 
+/* Procedimientos mas ejecutados, por ritmo */
+.procs{margin-top:12px;border:1px solid #2b3d57;border-radius:9px;
+  background:var(--card2);padding:8px 12px}
+.procs h3{margin:0 0 7px;font-size:.72rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:800}
+.procs ul{list-style:none;margin:0;padding:0}
+.procs li{position:relative;display:grid;grid-template-columns:1fr auto;
+  align-items:center;gap:10px;padding:3px 0;font-size:.8rem}
+.procs .pr-barra{position:absolute;inset:1px 0;z-index:0;border-radius:4px;
+  overflow:hidden}
+.procs .pr-barra i{display:block;height:100%;
+  background:linear-gradient(90deg,rgba(125,211,252,.3),rgba(125,211,252,.06))}
+.procs .pr-t{position:relative;z-index:1;padding-left:7px;font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.procs .pr-bd{color:var(--muted);font-weight:500;font-size:.88em}
+.procs .pr-n{position:relative;z-index:1;font-weight:900;
+  font-variant-numeric:tabular-nums;padding-right:6px;color:#7dd3fc}
+.procs .pr-n small{font-size:.62em;opacity:.7;font-weight:700;margin-left:1px}
+.procs .nota{margin-top:5px}
+body.tv .procs{display:none}
+body.pres:not(.g) .zona-b > .procs{flex:none;margin-top:12px}
+body.tv .procs li,body.pres .procs li{font-size:clamp(.62rem,.84vw,1.15rem)}
+body.tv .procs h3,body.pres .procs h3{font-size:clamp(.55rem,.7vw,.95rem)}
+
 /* Donde se va el tiempo: top de esperas acumuladas */
 .esperas{margin-top:12px;border:1px solid #2b3d57;border-radius:9px;
   background:var(--card2);padding:8px 12px}
@@ -1150,6 +1174,36 @@ function esperasHTML(i){
          "<ul>" + items + "</ul>" +
          '<div class="nota">Acumulado desde el arranque · no refleja este instante</div>' +
          "</div>";
+}
+
+// Procedimientos que más se ejecutan, por ritmo.
+//
+// Se muestra ejecuciones por minuto, no el acumulado: las cifras de la caché
+// de planes arrancan en momentos distintos para cada objeto —se reinician al
+// recompilar— así que los totales no son comparables entre sí. El acumulado
+// va en el tooltip, con su salvedad.
+function procsHTML(i){
+  const p = i.procs_top;
+  if (!Array.isArray(p) || !p.length) return "";
+  const max = Math.max.apply(null, p.map(x => x.por_min || 0)) || 1;
+  const items = p.map(x => {
+    const w = Math.max(3, Math.round(100 * (x.por_min || 0) / max));
+    const tit = x.objeto + (x.bd ? " · " + x.bd : "") +
+      "\n\n" + fmt(x.ejecuciones, 0) + " ejecuciones acumuladas" +
+      (x.ms_media != null ? "\n" + fmt(x.ms_media, 1) + " ms de media" : "") +
+      "\n\n⚠ El acumulado se reinicia cuando el objeto se recompila: es un " +
+      "mínimo, no un total exacto.";
+    return '<li title="' + esc(tit) + '">' +
+      '<span class="pr-barra"><i style="width:' + w + '%"></i></span>' +
+      '<span class="pr-t">' + esc(x.objeto) +
+        (x.bd ? ' <span class="pr-bd">' + esc(x.bd) + "</span>" : "") + "</span>" +
+      '<span class="pr-n">' + fmt(x.por_min, 0) + "<small>/min</small></span>" +
+      "</li>";
+  }).join("");
+  return '<div class="procs"><h3>Procedimientos más ejecutados</h3>' +
+         "<ul>" + items + "</ul>" +
+         '<div class="nota">Ritmo del último minuto · el acumulado, en el ' +
+         "tooltip</div></div>";
 }
 
 // MB a una unidad legible: 23456 -> "22,9 GB"
@@ -1901,6 +1955,7 @@ function tarjeta(i){
       "</div>" +
       bloqueosHTML(i) +
       sesionesHTML(i) +
+      procsHTML(i) +
       esperasHTML(i) +
       topBloqueosHTML(i) +
     "</div>";
@@ -2213,6 +2268,7 @@ function presReubicarListas(tarjeta){
   const jobs = tarjeta.querySelector(".jobs");
   const top  = tarjeta.querySelector(":scope > .topbloq");
   const esp  = tarjeta.querySelector(":scope > .esperas");
+  const pro  = tarjeta.querySelector(":scope > .procs");
 
   // Reparto final de las tres columnas:
   //   izquierda -> resumen, medidores, memoria/hipervisor, SQL Agent
@@ -2222,6 +2278,9 @@ function presReubicarListas(tarjeta){
   // Las esperas acabaron a la derecha porque esa columna depende de que haya
   // bloqueos y jobs corriendo: sin nada de eso se quedaba medio vacia. Las
   // esperas siempre tienen contenido, asi que la sostienen.
+  // los procedimientos van en el centro, bajo la tabla de sesiones: es el
+  // mismo tipo de dato (qué se está ejecutando) y la columna es ancha
+  if (zb && pro) zb.appendChild(pro);
   if (zb && graf) zb.appendChild(graf);
   if (zc){
     if (top)  zc.appendChild(top);

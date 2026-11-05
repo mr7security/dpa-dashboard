@@ -1046,6 +1046,27 @@ ORDER BY c.cabeza, c.nivel, s.wait_ms DESC
 """
 
 
+# Procedimientos mas ejecutados.
+#
+# OJO con la ventana: estas cifras viven en la cache de planes y se reinician
+# cuando el objeto se modifica o se recompila, asi que el acumulado NO es "del
+# dia" ni de ningun periodo fijo: es un minimo desde que ese plan entro en
+# cache. Por eso el panel muestra ejecuciones por minuto, calculadas como
+# diferencia entre dos lecturas: eso si es un ritmo real y comparable.
+SQL_PROCEDIMIENTOS = """
+SELECT TOP 15
+       DB_NAME(ps.database_id)                   AS bd,
+       OBJECT_NAME(ps.object_id, ps.database_id) AS objeto,
+       ps.execution_count                        AS ejecuciones,
+       ps.total_worker_time / 1000               AS cpu_ms,
+       ps.total_elapsed_time / 1000              AS dur_ms,
+       ps.cached_time                            AS en_cache_desde,
+       ps.last_execution_time                    AS ultima
+FROM   sys.dm_exec_procedure_stats ps
+ORDER BY ps.execution_count DESC
+"""
+
+
 # Dos contadores baratos: cuantos planes hay en cache (sube cuando el SQL no
 # va parametrizado) y como ha ido el SQL Agent hoy.
 # Una sola pasada por cada origen: la cache de planes puede tener cientos de
@@ -1147,6 +1168,8 @@ class SQLDirecto(object):
         # el bloqueo en vivo es lo que mas rapido cambia y la consulta es
         # barata: por defecto se refresca en cada ciclo del colector
         self.int_bloqvivo = int(raw.get("intervalo_bloqueos_vivo_segundos", 10))
+        # ventana sobre la que se calcula el ritmo de ejecucion por minuto
+        self.int_procs = int(raw.get("intervalo_procedimientos_segundos", 60))
         # Consulta opcional contra una tabla propia de historico de bloqueos.
         # Se admite una lista de lineas para que el JSON quede legible.
         sb = raw.get("consulta_historico_bloqueos")
@@ -1160,6 +1183,8 @@ class SQLDirecto(object):
         self._resumen = {}    # instancia -> (ts, {...})
         self._histbloq = {}   # instancia -> (ts, [ {...} ])
         self._bloqvivo = {}   # instancia -> (ts, [ {...} ])
+        self._procs    = {}   # instancia -> (ts, [ {...} ])
+        self._procprev = {}   # instancia -> {clave: (ts, ejecuciones)}
         self._fallo = {}      # instancia -> texto del ultimo error
         self._lock = threading.Lock()
 
@@ -1317,6 +1342,58 @@ class SQLDirecto(object):
                      "pct": float(f.get("pct") or 0)} for f in filas]
         return self._cacheado(self._esperas, instancia, self.int_esperas,
                               SQL_ESPERAS, _t)
+
+    def procedimientos(self, instancia):
+        """
+        Los que mas se ejecutan, con su ritmo por minuto.
+
+        El ritmo se calcula restando la lectura anterior: el acumulado de la
+        cache de planes no sirve para comparar porque cada procedimiento
+        lleva en cache desde un momento distinto.
+        """
+        if not self.habilitado(instancia):
+            return None
+
+        def _t(filas):
+            ahora = time.time()
+            # solo un hilo sondea cada instancia, asi que esto no necesita
+            # candado (lo garantiza el control de hilos del Monitor)
+            prev = self._procprev.get(instancia) or {}
+            nuevo, out = {}, []
+            for f in filas:
+                nom = (f.get("objeto") or "").strip()
+                if not nom:
+                    continue
+                bd = (f.get("bd") or "").strip()
+                clave = bd + "." + nom
+                ejec = int(f.get("ejecuciones") or 0)
+                nuevo[clave] = (ahora, ejec)
+
+                por_min = None
+                ant = prev.get(clave)
+                if ant and ahora > ant[0] and ejec >= ant[1]:
+                    por_min = (ejec - ant[1]) * 60.0 / (ahora - ant[0])
+
+                dur = int(f.get("dur_ms") or 0)
+                out.append({
+                    "objeto": nom,
+                    "bd": bd,
+                    "ejecuciones": ejec,
+                    "por_min": round(por_min, 1) if por_min is not None else None,
+                    "cpu_ms": int(f.get("cpu_ms") or 0),
+                    "ms_media": round(dur / ejec, 1) if ejec else None,
+                    "en_cache_desde": _iso(f.get("en_cache_desde")),
+                    "ultima": _iso(f.get("ultima")),
+                })
+            self._procprev[instancia] = nuevo
+            # mientras no haya dos lecturas no hay ritmo que enseñar
+            if not prev:
+                return []
+            out.sort(key=lambda x: (-(x["por_min"] or 0), -x["ejecuciones"]))
+            return out[:8]
+
+        return self._cacheado(self._procs, instancia, self.int_procs,
+                              SQL_PROCEDIMIENTOS, _t)
 
     def resumen(self, instancia):
         if not self.habilitado(instancia):
@@ -1495,6 +1572,9 @@ class Monitor(object):
                     esp = self.sql.esperas(nombre_inst)
                     if esp:
                         inst["esperas_top"] = esp
+                    pro = self.sql.procedimientos(nombre_inst)
+                    if pro:
+                        inst["procs_top"] = pro
                     res = self.sql.resumen(nombre_inst)
                     if res:
                         inst["resumen_sql"] = res
