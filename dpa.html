@@ -444,6 +444,10 @@ body.pres:not(.g) .zona-b > .esperas{flex:none;margin-top:12px}
 .btab .c-proc{max-width:clamp(140px,13vw,320px)}
 .btab .proc{color:#7dd3fc;font-weight:700}
 .btab .proc.adhoc{color:var(--muted);font-weight:500;font-style:italic}
+/* sentencia suelta: se muestra el principio del SQL, en texto monoespaciado
+   para distinguirlo a simple vista del nombre de un procedimiento */
+.btab .proc.sql{color:#cbd5e1;font-weight:500;
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:.9em}
 /* la sentencia es la ultima ejecutada, no la que tomo el bloqueo */
 .btab .vieja{display:inline-block;margin-left:4px;padding:0 4px;
   border-radius:3px;background:rgba(180,83,9,.28);
@@ -1409,10 +1413,15 @@ function tablaBloqueos(lista, soloTV){
               "necesariamente la que tomó el bloqueo: la sesión está " +
               "inactiva con la transacción abierta."
             : "");
+        // Sin nombre de procedimiento la celda no debe quedarse en "ad-hoc",
+        // que no dice nada: se enseña el principio de la sentencia, que es
+        // lo que de verdad identifica qué está corriendo.
+        let vis;
+        if (p)      vis = '<span class="proc">' + esc(p) + "</span>";
+        else if (q) vis = '<span class="proc sql">' + esc(q.slice(0, 80)) + "</span>";
+        else        vis = '<span class="proc adhoc">—</span>';
         return '<td class="' + c.cls + ' c-k-procedimiento" title="' +
-               esc(tit) + '">' +
-               (p ? '<span class="proc">' + esc(p) + "</span>"
-                  : '<span class="proc adhoc">ad-hoc</span>') +
+               esc(tit) + '">' + vis +
                (s.sentencia_vieja ? ' <span class="vieja">últ.</span>' : "") +
                "</td>";
       }
