@@ -433,12 +433,17 @@ body.pres:not(.g) .zona-c > .topbloq{flex:none;margin-top:10px}
 body.pres:not(.g) .zona-c > .jobs{flex:0 1 auto;min-height:0;overflow:hidden;
    margin-top:10px}
 body.pres:not(.g) .zona-c > .jobs ul{overflow:hidden}
+/* las esperas cierran la columna por abajo y absorben el hueco que sobre */
+body.pres:not(.g) .zona-c > .esperas{flex:none;margin-top:auto}
 /* y la columna del centro reparte igual: tabla arriba, esperas al pie */
-body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
-/* la tabla se queda con el alto sobrante: asi crece con la pantalla en vez
-   de dejar un hueco entre ella y las graficas */
-body.pres:not(.g) .zona-b > .act{flex:1 1 auto;min-height:0}
-body.pres:not(.g) .zona-b > .esperas{flex:none;margin-top:12px}
+/* La tabla NO se estira: con las sesiones agrupadas por SPID a menudo hay
+   menos filas que hueco, y estirarla dejaba un vacio dentro del recuadro
+   entre la ultima fila y el "y N mas". Mejor que el sobrante quede entre los
+   bloques, que ahi no parece un fallo. */
+body.pres:not(.g) .zona-b{display:flex;flex-direction:column;
+   justify-content:space-between}
+body.pres:not(.g) .zona-b > .act{flex:0 1 auto;min-height:0}
+body.pres:not(.g) .zona-b > .charts{margin-top:auto}
 
 /* Procedimiento que hay detras de cada sesion bloqueada o bloqueadora */
 .btab .c-proc{max-width:clamp(140px,13vw,320px)}
@@ -453,6 +458,20 @@ body.pres:not(.g) .zona-b > .esperas{flex:none;margin-top:12px}
   border-radius:3px;background:rgba(180,83,9,.28);
   border:1px solid rgba(251,191,36,.45);color:#fcd34d;
   font-size:.72em;font-weight:800}
+
+/* Segunda linea con el SQL de cada bloqueo */
+.btab tr.sqlrow > td{padding:0 0 5px 0;border-bottom:1px solid rgba(43,61,87,.4)}
+.sqlln{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:.82em;
+  line-height:1.45;padding-left:16px}
+.sqlln .sqlet{display:inline-block;min-width:3.4em;margin-right:7px;
+  font-family:inherit;font-size:.86em;font-weight:800;text-transform:uppercase;
+  letter-spacing:.05em;opacity:.8}
+.sqlln.ahora{color:#fca5a5}
+.sqlln.ahora .sqlet{color:#f87171}
+.sqlln.pidio{color:#93c5fd}
+.sqlln.pidio .sqlet{color:#60a5fa}
+body.pres:not(.g) .sqlln{font-size:clamp(.58rem,.76vw,1rem)}
 
 /* Cadena de bloqueo en arbol: el culpable arriba y sus victimas debajo */
 .btab tr.jefe > td{border-top:1px solid rgba(248,113,113,.28)}
@@ -1455,10 +1474,34 @@ function tablaBloqueos(lista, soloTV){
         : String(s[c.k] == null ? "" : s[c.k]);
       return '<td class="' + c.cls + " c-k-" + c.k + '" title="' + esc(tit) +
              '">' + celdaBloqueo(s, c) + "</td>";
-    }).join("") + "</tr>"
+    }).join("") + "</tr>" + sqlFila(s, cols.length, soloTV)
   ).join("");
   return '<table class="btab"><thead><tr>' + cab + "</tr></thead><tbody>" +
          cuerpo + "</tbody></table>";
+}
+
+// Segunda línea bajo cada bloqueo con el SQL. En un televisor el tooltip no
+// existe, así que lo que importa tiene que estar escrito.
+//
+// Son dos cosas distintas y las dos hacen falta:
+//   «ahora»  la sentencia que está ejecutando, la que toma el bloqueo
+//   «pidió»  lo que mandó el cliente, que es el punto de entrada a buscar
+// En el caso típico: ahora = TRUNCATE de una tabla de paso, pidió = el
+// EXEC del procedimiento que hay que abrir en el código.
+function sqlFila(s, ncols, soloTV){
+  if (soloTV) return "";                 // en el mosaico de TV no hay sitio
+  const q  = String(s.sentencia || "").trim();
+  const ib = String(s.inputbuffer || "").trim();
+  if (!q && !ib) return "";
+  // si el cliente mandó justo lo que se ejecuta, no se repite
+  const mismo = q && ib && (ib.indexOf(q.slice(0, 60)) >= 0);
+  const linea = (et, txt, cls) =>
+    '<div class="sqlln ' + cls + '" title="' + esc(txt) + '">' +
+      '<span class="sqlet">' + et + "</span>" + esc(txt) + "</div>";
+  return '<tr class="sqlrow"><td colspan="' + ncols + '">' +
+    (q ? linea(s.sentencia_vieja ? "últ." : "ahora", q, "ahora") : "") +
+    (ib && !mismo ? linea("pidió", ib, "pidio") : "") +
+    "</td></tr>";
 }
 
 function hayQueMostrarBloqueos(i){
@@ -2142,23 +2185,19 @@ function presReubicarListas(tarjeta){
   const top  = tarjeta.querySelector(":scope > .topbloq");
   const esp  = tarjeta.querySelector(":scope > .esperas");
 
-  // Las esperas van bajo la lista de sesiones, en el centro: ahi sobra sitio
-  // cuando la instancia esta tranquila, que es justo cuando la tabla es corta.
-  if (esp && zb) zb.appendChild(esp);
-
   // Reparto final de las tres columnas:
   //   izquierda -> resumen, medidores, memoria/hipervisor, SQL Agent
-  //   centro    -> sesiones activas, graficas, esperas
-  //   derecha   -> bloqueos, ranking, jobs en ejecucion
+  //   centro    -> sesiones activas y graficas
+  //   derecha   -> bloqueos, ranking, jobs, esperas
   //
-  // Las graficas acabaron en el centro porque la izquierda se desbordaba y
-  // aqui habia un hueco entre la tabla y el bloque de esperas. Ademas esta
-  // columna es mas ancha, asi que se leen mejor desde lejos.
-  if (zb && graf && esp) zb.insertBefore(graf, esp);
-  else if (zb && graf) zb.appendChild(graf);
+  // Las esperas acabaron a la derecha porque esa columna depende de que haya
+  // bloqueos y jobs corriendo: sin nada de eso se quedaba medio vacia. Las
+  // esperas siempre tienen contenido, asi que la sostienen.
+  if (zb && graf) zb.appendChild(graf);
   if (zc){
     if (top)  zc.appendChild(top);
     if (jobs) zc.appendChild(jobs);
+    if (esp)  zc.appendChild(esp);
   }
 }
 
