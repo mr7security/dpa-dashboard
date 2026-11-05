@@ -59,6 +59,37 @@ section.site{background:transparent;border:1px solid var(--sc);border-radius:14p
 /* Vista normal: un servidor por fila, a todo el ancho */
 .cards{display:grid;grid-template-columns:1fr;gap:12px}
 
+/* Vista normal por modulos: una pestana por instancia.
+   Antes se apilaban las cinco tarjetas en una sola pagina y habia que bajar
+   metro y medio para llegar a la ultima; peor aun, cada tarjeta se veia
+   distinta segun los datos que tuviera. Ahora se ve una a la vez, con la
+   misma maqueta siempre.
+   Todo esto vive SOLO en la vista normal: Modo TV, Presentacion y Solo
+   ATENEA2 tienen sus propias reglas de visibilidad de .card y no se tocan. */
+#inst-tabs{display:none}
+body:not(.tv):not(.pres):not(.solo) #inst-tabs{
+   display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+body:not(.tv):not(.pres):not(.solo) .cards > .card{display:none}
+body:not(.tv):not(.pres):not(.solo) .cards > .card.inst-on{display:block}
+.itab{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+   font:inherit;font-size:.82rem;font-weight:700;color:var(--muted);
+   background:var(--card);border:1px solid #2b3d57;border-radius:999px;
+   padding:6px 14px;transition:color .12s}
+.itab:hover{color:var(--text);border-color:#3c5578}
+.itab.on{color:var(--text);background:#16263d;
+   border-color:var(--cc,var(--sc));
+   box-shadow:inset 0 -3px 0 0 var(--cc,var(--sc))}
+/* el punto repite el semaforo de la tarjeta: asi se ve que instancia esta
+   mal sin tener que entrar en su pestana */
+.itab .pt{width:8px;height:8px;border-radius:50%;background:var(--off);
+   flex:none}
+.itab.ok .pt{background:var(--ok)}
+.itab.warn .pt{background:var(--warn)}
+.itab.alarm .pt{background:var(--alarm)}
+.itab.alarm{border-color:#7f1d1d}
+.itab .bq{font-weight:900;font-size:.72rem;color:#fff;background:var(--alarm);
+   border-radius:999px;padding:0 6px;font-variant-numeric:tabular-nums}
+
 /* y dentro, tres zonas en horizontal */
 .cbody{display:grid;
    grid-template-columns:minmax(250px,.85fr) minmax(280px,1.15fr) minmax(240px,1fr);
@@ -1048,6 +1079,31 @@ function detalleHTML(i){
     ["Memoria del host",      val(i.host_memoria, "%", 80, 92)]
   ]);
 
+  // Calidad de la cache de planes y jobs del dia. Venian solo del SQL
+  // directo y solo se pintaban en Presentacion (bloque .claves), asi que en
+  // la vista normal no habia forma de verlos. Aqui si: la vista normal es la
+  // que se usa para trabajar.
+  const r = i.resumen_sql || {};
+  const cache = filas([
+    ["Planes en caché",  r.planes != null ? fmt(r.planes, 0) : null],
+    ["Ad-hoc de un solo uso", r.adhoc_1uso == null ? null :
+       fmt(r.adhoc_1uso, 0) +
+       (r.planes ? " · " + fmt(100 * r.adhoc_1uso / Math.max(1, r.planes), 0) + " %" : "") +
+       (r.adhoc_mb ? " · " + fmtMB(r.adhoc_mb) : "")],
+    ["Parametrizados",   r.planes_prep != null ? fmt(r.planes_prep, 0) : null]
+  ]);
+
+  // `val` no deja fijar decimales y con 3 fallidos pintaria "3,0": son
+  // unidades, no una medida. Se formatea a 0 y el color se pone aparte.
+  const fallidos = r.jobs_fallidos == null ? null :
+    '<span class="' + (r.jobs_fallidos >= 10 ? "v-alarm"
+                     : r.jobs_fallidos >= 1 ? "v-warn" : "") + '">' +
+    fmt(r.jobs_fallidos, 0) + "</span>";
+  const agente = filas([
+    ["Jobs ejecutados hoy", r.jobs_hoy != null ? fmt(r.jobs_hoy, 0) : null],
+    ["De ellos, fallidos",  fallidos]
+  ]);
+
   const alarmas = CAT_DETALLE
     .filter(c => (i.alarmas || {})[c])
     .map(c => '<span class="tag ' + colorNivelCat(i.alarmas[c]) + '">' +
@@ -1059,6 +1115,9 @@ function detalleHTML(i){
            '<div class="subt">Rendimiento</div><table>' + rec + "</table>" +
            (mem ? '<div class="subt">Memoria</div><table>' + mem + "</table>" : "") +
            (hv ? '<div class="subt">Hipervisor</div><table>' + hv + "</table>" : "") +
+           (cache ? '<div class="subt">Calidad de la caché de planes</div><table>' +
+                    cache + "</table>" : "") +
+           (agente ? '<div class="subt">SQL Agent hoy</div><table>' + agente + "</table>" : "") +
            (tempdb ? '<div class="subt">TempDB</div><table>' + tempdb + "</table>" : "") +
            '<div class="subt">Instancia</div><table>' + inf + "</table>" +
            '<div class="alarmas">' + alarmas + "</div>" +
@@ -1082,14 +1141,19 @@ function clavesHTML(i){
   };
 
   const r = i.resumen_sql || {};
-  // Una cache de planes grande con muchos planes ad-hoc es la huella del SQL
-  // sin parametrizar: cada variante literal se queda ocupando sitio.
-  const planes = r.planes != null
-    ? fmt(r.planes, 0) + (r.planes_adhoc != null
-        ? ' <span style="opacity:.65;font-weight:600">· ' +
-          fmt(100 * r.planes_adhoc / Math.max(1, r.planes), 0) + " % ad-hoc</span>"
-        : "")
+  // Se separan `Adhoc` y `Prepared` a propósito. Sumarlos daba un 97 % que
+  // exageraba el problema: los `Prepared` son las consultas parametrizadas,
+  // reutilizan plan y están bien. Lo que de verdad desperdicia memoria es el
+  // ad-hoc de UN SOLO USO: se compila, ocupa y no se vuelve a tocar.
+  const planes = r.planes != null ? fmt(r.planes, 0) : null;
+  const tirados = r.adhoc_1uso != null
+    ? fmt(r.adhoc_1uso, 0) +
+      (r.planes ? ' <span style="opacity:.6;font-weight:600">· ' +
+        fmt(100 * r.adhoc_1uso / Math.max(1, r.planes), 0) + " %</span>" : "") +
+      (r.adhoc_mb ? ' <span style="opacity:.6;font-weight:600">· ' +
+        fmtMB(r.adhoc_mb) + "</span>" : "")
     : null;
+  const parametr = r.planes_prep != null ? fmt(r.planes_prep, 0) : null;
 
   const mem =
     celda("Page life expectancy", i.ple != null ? fmt(i.ple, 0) + " s" : null,
@@ -1100,7 +1164,9 @@ function clavesHTML(i){
     celda("Buffer cache", fmtMB(i.cache_mb)) +
     celda("Caché de planes", fmtMB(i.plan_cache_mb),
           niv(i.plan_cache_mb, 4096, 8192)) +
-    celda("Planes en caché", planes);
+    celda("Planes en caché", planes) +
+    celda("Ad-hoc de un solo uso", tirados, niv(r.adhoc_mb, 512, 1024)) +
+    celda("Parametrizados", parametr);
 
   const jobs =
     celda("Jobs ejecutados hoy", r.jobs_hoy != null ? fmt(r.jobs_hoy, 0) : null) +
@@ -1932,8 +1998,8 @@ function tarjeta(i){
         '<canvas class="chart barras" data-key="' + i.db_id + '|Blocked Sessions"></canvas></div>' +
     "</div>";
 
-  return '<div class="card ' + info.card + '" style="--cc:' +
-      colorServidor(i.nombre) + '">' +
+  return '<div class="card ' + info.card + '" data-inst="' + esc(i.nombre) +
+      '" style="--cc:' + colorServidor(i.nombre) + '">' +
       '<div class="card-h">' +
         '<h2><span class="t-full">' + esc(tituloLimpio(i.nombre)) + "</span>" +
           '<span class="t-tv">' + esc(tituloTV(i.nombre)) + "</span></h2>" +
@@ -1973,6 +2039,63 @@ function resumenPills(insts){
   return out.join("");
 }
 
+// ---------------------------------------------------- pestanas (vista normal)
+//
+// Que instancia se esta viendo. Se guarda para que un refresco —o volver al
+// panel manana— no te devuelva siempre a la primera.
+let instActiva = null;
+try{ instActiva = localStorage.getItem("dpa-inst") || null; }catch(e){}
+
+function instTabsHTML(insts){
+  if (insts.length < 2) return "";
+  return '<div id="inst-tabs">' + insts.map(i => {
+    const info = NIVEL_INFO[nivelMostrado(i)] || NIVEL_INFO.caido;
+    const bq = i.sesiones_bloqueadas;
+    return '<button type="button" class="itab ' + info.cls +
+      '" data-inst="' + esc(i.nombre) + '" style="--cc:' +
+      colorServidor(i.nombre) + '" title="' + esc(info.txt) + '">' +
+      '<i class="pt"></i><span>' + esc(tituloLimpio(i.nombre)) + "</span>" +
+      (bq ? '<b class="bq" title="sesiones bloqueadas">' + fmt(bq, 0) + "</b>" : "") +
+      "</button>";
+  }).join("") + "</div>";
+}
+
+// Decide que tarjeta se ve. Hay que llamarla ANTES de pintar las graficas:
+// un canvas dentro de un display:none mide cero y sale en blanco.
+function aplicarTab(){
+  const cards = Array.prototype.slice.call(
+    document.querySelectorAll("#sites .cards > .card"));
+  if (!cards.length) return;
+  // la instancia guardada puede haber desaparecido de DPA o estar excluida
+  let act = cards.filter(c => c.dataset.inst === instActiva)[0];
+  if (!act){ act = cards[0]; instActiva = act.dataset.inst; }
+  cards.forEach(c => c.classList.toggle("inst-on", c === act));
+  document.querySelectorAll("#inst-tabs .itab").forEach(b =>
+    b.classList.toggle("on", b.dataset.inst === instActiva));
+}
+
+function instIr(nombre){
+  if (!nombre) return;
+  instActiva = nombre;
+  try{ localStorage.setItem("dpa-inst", instActiva); }catch(e){}
+  aplicarTab();
+  pintarTodas();   // las graficas de la tarjeta que acaba de aparecer
+}
+
+// Flechas izquierda/derecha en la vista normal
+function instPaso(d){
+  const t = Array.prototype.slice.call(
+    document.querySelectorAll("#inst-tabs .itab")).map(b => b.dataset.inst);
+  if (t.length < 2) return;
+  const n = t.indexOf(instActiva);
+  instIr(t[(((n < 0 ? 0 : n) + d) % t.length + t.length) % t.length]);
+}
+
+document.addEventListener("click", ev => {
+  const b = ev.target.closest && ev.target.closest("#inst-tabs .itab");
+  if (b) instIr(b.dataset.inst);
+});
+
 function render(estado){
   const insts = estado.instancias || [];
   const cont = document.getElementById("sites");
@@ -1996,10 +2119,12 @@ function render(estado){
         resumenPills(insts) +
         '<span class="upd">Actualizado ' + esc(hora) + "</span>" +
       "</div>" +
+      instTabsHTML(insts) +
       '<div class="cards">' + insts.map(tarjeta).join("") + "</div>" +
     "</section>";
 
   pintarBloqueosTV(insts);
+  aplicarTab();
   // primero se decide que tarjeta se ve y luego se pintan las graficas: al
   // reves saldrian dibujadas con ancho cero
   if (soloOn){
@@ -2725,7 +2850,21 @@ document.addEventListener("keydown", e => {
     if (e.key === "Escape") toggleSolo();
     return;                       // en Solo no hay navegacion: no rota
   }
-  if (!presOn) return;
+  // En la vista normal las flechas cambian de pestana. En Presentacion ya
+  // estan cogidas para pasar de diapositiva, y en Modo TV se ven todas las
+  // tarjetas a la vez: ahi la pestana no significa nada y cambiarla solo
+  // dejaria elegida otra instancia al salir, sin que se vea nada.
+  if (!presOn){
+    const esTV = document.body.classList.contains("tv");
+    const flecha = (e.key === "ArrowRight" || e.key === "ArrowLeft");
+    // Alt+Flecha es "atras" del navegador; Ctrl/Cmd/Shift+Flecha, seleccion
+    // y desplazamiento. No se pisan.
+    const limpio = !(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey);
+    if (flecha && limpio && !esTV){
+      e.preventDefault(); instPaso(e.key === "ArrowRight" ? 1 : -1);
+    }
+    return;
+  }
   if (e.key === "ArrowRight"){ e.preventDefault(); presIr(presIdx + 1); }
   else if (e.key === "ArrowLeft"){ e.preventDefault(); presIr(presIdx - 1); }
   else if (e.key === " "){ e.preventDefault(); presPausa = !presPausa; presAplicar(); }

@@ -1072,11 +1072,22 @@ ORDER BY ps.execution_count DESC
 # Una sola pasada por cada origen: la cache de planes puede tener cientos de
 # miles de entradas y no conviene recorrerla dos veces cada dos minutos.
 SQL_RESUMEN = """
-SELECT p.planes, p.planes_adhoc, j.jobs_hoy, j.jobs_fallidos
+SELECT p.planes, p.planes_adhoc, p.adhoc_1uso, p.adhoc_mb, p.planes_prep,
+       j.jobs_hoy, j.jobs_fallidos
 FROM (
+    -- Adhoc y Prepared NO son lo mismo y meterlos en el mismo saco exagera
+    -- el diagnostico: 'Prepared' son las consultas parametrizadas con
+    -- sp_executesql, que REUTILIZAN plan y no son el problema. El problema
+    -- es 'Adhoc' con usecounts = 1: SQL construido con literales que se
+    -- compila, ocupa memoria y no se vuelve a usar jamas.
     SELECT COUNT(*) AS planes,
-           SUM(CASE WHEN objtype IN ('Adhoc','Prepared') THEN 1 ELSE 0 END)
-               AS planes_adhoc
+           SUM(CASE WHEN objtype = 'Adhoc' THEN 1 ELSE 0 END) AS planes_adhoc,
+           SUM(CASE WHEN objtype = 'Adhoc' AND usecounts = 1
+                    THEN 1 ELSE 0 END)                        AS adhoc_1uso,
+           SUM(CASE WHEN objtype = 'Adhoc' AND usecounts = 1
+                    THEN CONVERT(BIGINT, size_in_bytes)
+                    ELSE CONVERT(BIGINT, 0) END) / 1048576    AS adhoc_mb,
+           SUM(CASE WHEN objtype = 'Prepared' THEN 1 ELSE 0 END) AS planes_prep
     FROM   sys.dm_exec_cached_plans
 ) AS p
 CROSS JOIN (
@@ -1404,6 +1415,9 @@ class SQLDirecto(object):
             f = filas[0]
             return {"planes": f.get("planes"),
                     "planes_adhoc": f.get("planes_adhoc"),
+                    "adhoc_1uso": f.get("adhoc_1uso"),
+                    "adhoc_mb": f.get("adhoc_mb"),
+                    "planes_prep": f.get("planes_prep"),
                     "jobs_hoy": f.get("jobs_hoy"),
                     "jobs_fallidos": f.get("jobs_fallidos")}
         return self._cacheado(self._resumen, instancia, self.int_resumen,
