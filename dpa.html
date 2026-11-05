@@ -361,8 +361,12 @@ body.pres:not(.g) .card{display:none}
 body.pres:not(.g) .card.pres-on{display:flex;flex-direction:column;height:100%;
    overflow:hidden}
 /* Tres columnas: resumen estrecho, y las dos tablas repartiendose el resto */
+/* La columna de bloqueos es la que más ancho necesita —tabla más dos líneas
+   de SQL por fila— y es además lo más importante de la pantalla, así que se
+   lleva la porción mayor. La izquierda son pares etiqueta/valor y aprieta
+   bien. */
 body.pres:not(.g) .cbody{flex:1;min-height:0;align-items:stretch;
-   grid-template-columns:minmax(240px,.8fr) minmax(0,1.4fr) minmax(0,1.2fr)}
+   grid-template-columns:minmax(215px,.72fr) minmax(0,1.18fr) minmax(0,1.5fr)}
 body.pres:not(.g) .zona{overflow:hidden;display:flex;flex-direction:column}
 
 /* Las tres metricas se apilan, con la etiqueta al lado del numero: en una
@@ -617,7 +621,20 @@ body.pres:not(.g) .blk > .nota{flex:none}
 body.pres:not(.g) .act .scroll{flex:1;min-height:0;overflow:hidden}
 
 /* La columna Programa deja de comerse el ancho: aqui hacen falta todas */
-body.pres:not(.g) .btab .c-ancha{width:auto;max-width:clamp(120px,11vw,280px)}
+/* Ancho fijo: con `auto` el contenido mandaba y la tabla se salía del
+   recuadro, perdiendo las últimas columnas. Así los anchos los decide el
+   contenedor y el texto largo se recorta con puntos suspensivos. */
+body.pres:not(.g) .btab{table-layout:fixed}
+body.pres:not(.g) .btab th,
+body.pres:not(.g) .btab td{overflow:hidden;text-overflow:ellipsis;
+   white-space:nowrap}
+body.pres:not(.g) .btab .c-ancha{width:auto;max-width:none}
+body.pres:not(.g) .btab .c-spid{width:5.5em}
+body.pres:not(.g) .btab .c-rol{width:5.2em}
+body.pres:not(.g) .btab .c-esp{width:9em}
+body.pres:not(.g) .btab .c-num{width:4.6em}
+/* la fila del SQL ocupa todo el ancho y no debe heredar el recorte de celda */
+body.pres:not(.g) .btab tr.sqlrow > td{white-space:normal;overflow:visible}
 
 /* Los bloques vacios solo se ven en presentacion: un hueco sin titulo parece
    un fallo del panel. En la vista normal y en TV estorbarian. */
@@ -1318,15 +1335,23 @@ function discoHTML(i){
 
 // Columnas de la tabla de bloqueos. `tv:true` = tambien se muestra en la tele,
 // donde hay que ser mucho mas selectivo.
+// `tv` marca las columnas del juego COMPACTO, que se usa tanto en el mosaico
+// de Modo TV como en la diapositiva de instancia. Sin ese filtro la tabla
+// renderizaba las catorce columnas y se salía del recuadro, comiéndose
+// precisamente Espera y Tiempo.
+//
+// "Bloq. por" sobra en compacto porque el árbol ya enseña quién bloquea a
+// quién, y "Procedimiento" también porque las dos líneas de SQL de debajo
+// dan el objeto, lo que se ejecuta y lo que pidió el cliente.
 const COLS_BLOQUEO = [
   {k:"spid",           t:"SPID",      tv:true,  cls:"c-spid"},
   {k:"rol",            t:"Rol",       tv:true,  cls:"c-rol"},
-  {k:"bloqueado_por",  t:"Bloq. por", tv:true,  cls:"c-num"},
+  {k:"bloqueado_por",  t:"Bloq. por", tv:false, cls:"c-num"},
   {k:"login",          t:"Login",     tv:false, cls:"c-el"},
   {k:"programa",       t:"Programa",  tv:true,  cls:"c-el c-ancha"},
   // Qué código está detrás. Solo llega por SQL directo: DPA no lo da.
-  {k:"procedimiento",  t:"Procedimiento", tv:true, cls:"c-el c-proc"},
-  {k:"host",           t:"Host",      tv:true,  cls:"c-el"},
+  {k:"procedimiento",  t:"Procedimiento", tv:false, cls:"c-el c-proc"},
+  {k:"host",           t:"Host",      tv:false, cls:"c-el"},
   {k:"bd",             t:"BD",        tv:true,  cls:"c-el"},
   {k:"comando",        t:"Comando",   tv:false, cls:""},
   {k:"espera",         t:"Espera",    tv:true,  cls:"c-esp"},
@@ -1422,7 +1447,11 @@ function ordenarCadena(lista){
 }
 
 function tablaBloqueos(lista, soloTV){
-  const cols = COLS_BLOQUEO.filter(c => !soloTV || c.tv);
+  // La diapositiva de instancia también va justa de ancho: usa el mismo
+  // juego reducido de columnas que el mosaico de TV.
+  const b = document.body.classList;
+  const compacta = soloTV || (b.contains("pres") && !b.contains("g"));
+  const cols = COLS_BLOQUEO.filter(c => !compacta || c.tv);
   const cab = cols.map(c =>
     '<th class="' + c.cls + " c-k-" + c.k + '">' + esc(c.t) + "</th>").join("");
   const cuerpo = ordenarCadena(lista).map(s =>
