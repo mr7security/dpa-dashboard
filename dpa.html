@@ -440,6 +440,16 @@ body.pres:not(.g) .zona-b{display:flex;flex-direction:column}
 body.pres:not(.g) .zona-b > .act{flex:1 1 auto;min-height:0}
 body.pres:not(.g) .zona-b > .esperas{flex:none;margin-top:12px}
 
+/* Procedimiento que hay detras de cada sesion bloqueada o bloqueadora */
+.btab .c-proc{max-width:clamp(140px,13vw,320px)}
+.btab .proc{color:#7dd3fc;font-weight:700}
+.btab .proc.adhoc{color:var(--muted);font-weight:500;font-style:italic}
+/* la sentencia es la ultima ejecutada, no la que tomo el bloqueo */
+.btab .vieja{display:inline-block;margin-left:4px;padding:0 4px;
+  border-radius:3px;background:rgba(180,83,9,.28);
+  border:1px solid rgba(251,191,36,.45);color:#fcd34d;
+  font-size:.72em;font-weight:800}
+
 /* Cadena de bloqueo en arbol: el culpable arriba y sus victimas debajo */
 .btab tr.jefe > td{border-top:1px solid rgba(248,113,113,.28)}
 .btab tr.jefe:first-child > td{border-top:none}
@@ -1291,6 +1301,8 @@ const COLS_BLOQUEO = [
   {k:"bloqueado_por",  t:"Bloq. por", tv:true,  cls:"c-num"},
   {k:"login",          t:"Login",     tv:false, cls:"c-el"},
   {k:"programa",       t:"Programa",  tv:true,  cls:"c-el c-ancha"},
+  // Qué código está detrás. Solo llega por SQL directo: DPA no lo da.
+  {k:"procedimiento",  t:"Procedimiento", tv:true, cls:"c-el c-proc"},
   {k:"host",           t:"Host",      tv:true,  cls:"c-el"},
   {k:"bd",             t:"BD",        tv:true,  cls:"c-el"},
   {k:"comando",        t:"Comando",   tv:false, cls:""},
@@ -1384,6 +1396,24 @@ function tablaBloqueos(lista, soloTV){
                esc(String(s.spid == null ? "" : s.spid)) +
                (s.__victimas > 1
                  ? ' <span class="vict">' + s.__victimas + "</span>" : "") +
+               "</td>";
+      }
+      // El procedimiento lleva la sentencia completa en el tooltip, que es
+      // donde de verdad se ve qué está haciendo.
+      if (c.k === "procedimiento"){
+        const p = String(s.procedimiento || "");
+        const q = String(s.sentencia || "");
+        const tit = (p ? p + "\n\n" : "") + (q || "sin sentencia disponible") +
+          (s.sentencia_vieja
+            ? "\n\n⚠ Es la ÚLTIMA sentencia que ejecutó esta sesión, no " +
+              "necesariamente la que tomó el bloqueo: la sesión está " +
+              "inactiva con la transacción abierta."
+            : "");
+        return '<td class="' + c.cls + ' c-k-procedimiento" title="' +
+               esc(tit) + '">' +
+               (p ? '<span class="proc">' + esc(p) + "</span>"
+                  : '<span class="proc adhoc">ad-hoc</span>') +
+               (s.sentencia_vieja ? ' <span class="vieja">últ.</span>' : "") +
                "</td>";
       }
       // el programa lleva tooltip propio: el crudo trae el job_id en binario

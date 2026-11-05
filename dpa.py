@@ -923,7 +923,8 @@ SQL_BLOQUEOS_VIVO = """
 WITH esp AS (
     SELECT r.session_id, r.blocking_session_id, r.database_id, r.wait_type,
            r.wait_time, r.status, r.command, r.open_transaction_count,
-           r.wait_resource
+           r.wait_resource, r.sql_handle,
+           r.statement_start_offset, r.statement_end_offset
     FROM   sys.dm_exec_requests r
     WHERE  r.blocking_session_id <> 0
 )
@@ -940,9 +941,19 @@ SELECT TOP 30
        CONVERT(VARCHAR(120), e.wait_resource)     AS recurso,
        e.wait_time / 1000.0                       AS espera_s,
        e.open_transaction_count                   AS trans_abiertas,
-       e.status                                   AS estado
+       e.status                                   AS estado,
+       -- si la sentencia corre dentro de un procedimiento, objectid apunta a
+       -- el; en SQL suelto viene NULL
+       CONVERT(VARCHAR(140), OBJECT_NAME(t.objectid, t.dbid)) AS procedimiento,
+       CONVERT(VARCHAR(400), LTRIM(SUBSTRING(t.text,
+           (e.statement_start_offset / 2) + 1,
+           ((CASE e.statement_end_offset WHEN -1 THEN DATALENGTH(t.text)
+             ELSE e.statement_end_offset END - e.statement_start_offset) / 2) + 1
+       )))                                        AS sentencia,
+       0                                          AS sentencia_vieja
 FROM   esp e
 JOIN   sys.dm_exec_sessions s ON s.session_id = e.session_id
+OUTER APPLY sys.dm_exec_sql_text(e.sql_handle) t
 UNION ALL
 SELECT 'bloquea',
        s.session_id,
@@ -959,9 +970,29 @@ SELECT 'bloquea',
        CONVERT(VARCHAR(120), ISNULL(r.wait_resource, '')),
        ISNULL(r.wait_time, 0) / 1000.0,
        ISNULL(r.open_transaction_count, s.open_transaction_count),
-       ISNULL(r.status, s.status)
+       ISNULL(r.status, s.status),
+       CONVERT(VARCHAR(140), OBJECT_NAME(t2.objectid, t2.dbid)),
+       -- sin peticion activa no hay sentencia en curso: se recurre a la
+       -- ULTIMA que ejecuto esa conexion
+       CONVERT(VARCHAR(400), LTRIM(SUBSTRING(t2.text,
+           CASE WHEN r.statement_start_offset IS NULL THEN 1
+                ELSE (r.statement_start_offset / 2) + 1 END,
+           CASE WHEN r.statement_end_offset IS NULL THEN 400
+                ELSE ((CASE r.statement_end_offset WHEN -1 THEN DATALENGTH(t2.text)
+                       ELSE r.statement_end_offset END
+                       - r.statement_start_offset) / 2) + 1 END
+       ))),
+       CASE WHEN r.session_id IS NULL THEN 1 ELSE 0 END
 FROM   sys.dm_exec_sessions s
 LEFT JOIN sys.dm_exec_requests r ON r.session_id = s.session_id
+OUTER APPLY (
+    SELECT TOP 1 c.most_recent_sql_handle
+    FROM   sys.dm_exec_connections c
+    WHERE  c.session_id = s.session_id
+    ORDER BY c.connect_time DESC
+) cn
+OUTER APPLY sys.dm_exec_sql_text(
+    ISNULL(r.sql_handle, cn.most_recent_sql_handle)) t2
 WHERE  s.session_id IN (SELECT blocking_session_id FROM esp)
   AND  s.session_id NOT IN (SELECT session_id FROM esp)
 ORDER BY rol, espera_s DESC
@@ -1159,6 +1190,12 @@ class SQLDirecto(object):
                     "espera_s": float(f.get("espera_s") or 0),
                     "trans_abiertas": f.get("trans_abiertas"),
                     "estado": (f.get("estado") or "").strip(),
+                    "procedimiento": (f.get("procedimiento") or "").strip(),
+                    "sentencia": " ".join(
+                        (f.get("sentencia") or "").split())[:400],
+                    # marca de que la sentencia es la ULTIMA que ejecuto la
+                    # sesion, no necesariamente la que tomo el bloqueo
+                    "sentencia_vieja": bool(f.get("sentencia_vieja")),
                 })
             return out
         return self._cacheado(self._bloqvivo, instancia, self.int_bloqvivo,
