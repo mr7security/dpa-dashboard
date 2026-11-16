@@ -828,33 +828,57 @@ FROM   msdb.dbo.sysjobs
 # Jobs corriendo ahora mismo, con su duracion media de los ultimos 7 dias para
 # poder senalar los que se estan pasando de lo normal.
 #
+# ESTA CONSULTA NOS CONVIRTIO EN BLOQUEADOR RAIZ DE ATENEA2. Leer el comentario
+# de ClienteSQL para el detalle. Lo que la hacia toxica era la forma, no el
+# dato: antes habia un CTE que agregaba la media de TODOS los jobs de los
+# ultimos 7 dias y se ejecutaba cada 30 segundos.
+#
+#   sysjobhistory esta clusterizada por (job_id, instance_id). Filtrar por
+#   run_date y step_id, que no estan indexados, obliga a recorrer la tabla
+#   entera. Con 22.821 ejecuciones diarias eso son millones de filas, cada
+#   30 segundos, las 24 horas.
+#
+# Ahora la media se pide con un OUTER APPLY correlado por job_id. Como ese es
+# justo el inicio de la clave del indice clusterizado, SQL Server hace un SEEK
+# por cada job EN EJECUCION -- normalmente entre 5 y 20-- en vez de un SCAN de
+# la tabla completa. El resultado es identico; el coste, de otro orden.
+#
+# Lo que acota el peor caso no es el TOP 40 --que se aplica DESPUES del
+# APPLY-- sino el WHERE sobre sysjobactivity: solo quedan los jobs que estan
+# corriendo en este instante, y de esos nunca hay muchos.
+#
 # OJO con el `%` del modulo de T-SQL: pymssql solo interpola parametros cuando
 # se le pasan, y aqui se ejecuta con `cur.execute(sql)` a secas. Por eso va un
 # `%` simple. Si algun dia se le pasan parametros habria que duplicarlo a `%%`.
 SQL_JOBS_ACTIVOS = """
-WITH med AS (
-    SELECT h.job_id,
-           AVG(h.run_duration/10000*3600 + (h.run_duration/100%100)*60
-               + h.run_duration%100) AS media_s
+SELECT TOP 40
+       j.name                                               AS nombre,
+       DATEDIFF(SECOND, ja.start_execution_date, GETDATE()) AS segundos,
+       ISNULL(m.media_s, 0)                                 AS media_s
+FROM   msdb.dbo.sysjobactivity ja
+JOIN   msdb.dbo.sysjobs j ON j.job_id = ja.job_id
+OUTER APPLY (
+    -- correlado por job_id = seek sobre el indice clusterizado.
+    -- El CONVERT a BIGINT no es decorativo: AVG() sobre una expresion INT
+    -- acumula en INT, y en el historial hay registros antiguos con
+    -- run_duration mal escrito que pueden desbordar (error 8115) y tumbar
+    -- la consulta entera.
+    SELECT AVG(CONVERT(BIGINT, h.run_duration)/10000*3600
+               + (CONVERT(BIGINT, h.run_duration)/100%100)*60
+               + CONVERT(BIGINT, h.run_duration)%100) AS media_s
     FROM   msdb.dbo.sysjobhistory h
-    WHERE  h.step_id = 0
+    WHERE  h.job_id   = ja.job_id
+      AND  h.step_id  = 0
       AND  h.run_status = 1          -- solo ejecuciones correctas: las
                                      -- abortadas bajarian la media
       AND  h.run_date >= CONVERT(INT, CONVERT(VARCHAR(8),
                                  DATEADD(DAY,-7,GETDATE()), 112))
-    GROUP BY h.job_id
-)
-SELECT TOP 40
-       j.name                                                     AS nombre,
-       DATEDIFF(SECOND, ja.start_execution_date, GETDATE())       AS segundos,
-       ISNULL(med.media_s, 0)                                     AS media_s
-FROM   msdb.dbo.sysjobactivity ja
-JOIN   msdb.dbo.sysjobs j ON j.job_id = ja.job_id
-LEFT JOIN med ON med.job_id = ja.job_id
+) m
 WHERE  ja.session_id = (SELECT MAX(session_id) FROM msdb.dbo.syssessions)
   AND  ja.start_execution_date IS NOT NULL
   AND  ja.stop_execution_date  IS NULL
 ORDER BY ja.start_execution_date
+OPTION (MAXDOP 1)
 """
 
 
@@ -1067,36 +1091,51 @@ ORDER BY ps.execution_count DESC
 """
 
 
-# Dos contadores baratos: cuantos planes hay en cache (sube cuando el SQL no
-# va parametrizado) y como ha ido el SQL Agent hoy.
-# Una sola pasada por cada origen: la cache de planes puede tener cientos de
-# miles de entradas y no conviene recorrerla dos veces cada dos minutos.
+# Cuantos planes hay en cache (sube cuando el SQL no va parametrizado).
+# Una sola pasada: la cache de planes puede tener cientos de miles de entradas
+# y no conviene recorrerla dos veces.
+#
+# Esto lee DMVs, no tablas de usuario: no toma locks que molesten a nadie.
+# El contador de jobs del dia vivia aqui dentro con un CROSS JOIN y se ha
+# sacado a SQL_JOBS_HOY, porque ese SI lee sysjobhistory y no tiene por que
+# hacerlo cada dos minutos.
 SQL_RESUMEN = """
-SELECT p.planes, p.planes_adhoc, p.adhoc_1uso, p.adhoc_mb, p.planes_prep,
-       j.jobs_hoy, j.jobs_fallidos
-FROM (
-    -- Adhoc y Prepared NO son lo mismo y meterlos en el mismo saco exagera
-    -- el diagnostico: 'Prepared' son las consultas parametrizadas con
-    -- sp_executesql, que REUTILIZAN plan y no son el problema. El problema
-    -- es 'Adhoc' con usecounts = 1: SQL construido con literales que se
-    -- compila, ocupa memoria y no se vuelve a usar jamas.
-    SELECT COUNT(*) AS planes,
-           SUM(CASE WHEN objtype = 'Adhoc' THEN 1 ELSE 0 END) AS planes_adhoc,
-           SUM(CASE WHEN objtype = 'Adhoc' AND usecounts = 1
-                    THEN 1 ELSE 0 END)                        AS adhoc_1uso,
-           SUM(CASE WHEN objtype = 'Adhoc' AND usecounts = 1
-                    THEN CONVERT(BIGINT, size_in_bytes)
-                    ELSE CONVERT(BIGINT, 0) END) / 1048576    AS adhoc_mb,
-           SUM(CASE WHEN objtype = 'Prepared' THEN 1 ELSE 0 END) AS planes_prep
-    FROM   sys.dm_exec_cached_plans
-) AS p
-CROSS JOIN (
-    SELECT COUNT(*) AS jobs_hoy,
-           SUM(CASE WHEN run_status <> 1 THEN 1 ELSE 0 END) AS jobs_fallidos
-    FROM   msdb.dbo.sysjobhistory
-    WHERE  step_id = 0
-      AND  run_date = CONVERT(INT, CONVERT(VARCHAR(8), GETDATE(), 112))
-) AS j
+-- Adhoc y Prepared NO son lo mismo y meterlos en el mismo saco exagera el
+-- diagnostico: 'Prepared' son las consultas parametrizadas con sp_executesql,
+-- que REUTILIZAN plan y no son el problema. El problema es 'Adhoc' con
+-- usecounts = 1: SQL construido con literales que se compila, ocupa memoria
+-- y no se vuelve a usar jamas.
+SELECT COUNT(*) AS planes,
+       SUM(CASE WHEN objtype = 'Adhoc' THEN 1 ELSE 0 END) AS planes_adhoc,
+       SUM(CASE WHEN objtype = 'Adhoc' AND usecounts = 1
+                THEN 1 ELSE 0 END)                        AS adhoc_1uso,
+       SUM(CASE WHEN objtype = 'Adhoc' AND usecounts = 1
+                THEN CONVERT(BIGINT, size_in_bytes)
+                ELSE CONVERT(BIGINT, 0) END) / 1048576    AS adhoc_mb,
+       SUM(CASE WHEN objtype = 'Prepared' THEN 1 ELSE 0 END) AS planes_prep
+FROM   sys.dm_exec_cached_plans
+"""
+
+
+# Jobs ejecutados hoy y cuantos fallaron.
+#
+# Esta consulta SI recorre sysjobhistory entera: filtra por run_date y step_id,
+# que no estan en el indice clusterizado, y a diferencia de la de jobs activos
+# aqui no hay nada por lo que correlacionar -- el dato es precisamente un
+# agregado de todos los jobs. No se puede convertir en seek.
+#
+# Lo que se hace entonces es (a) no bloquear mientras se recorre, que ya lo
+# garantiza el READ UNCOMMITTED de la sesion, (b) MAXDOP 1, para no secuestrar
+# workers en una instancia que ya va al 65 % de espera por paralelismo, y
+# (c) pedirlo cada 10 minutos en vez de cada 2. Es un contador acumulado del
+# dia: nadie lo mira al segundo.
+SQL_JOBS_HOY = """
+SELECT COUNT(*) AS jobs_hoy,
+       SUM(CASE WHEN run_status <> 1 THEN 1 ELSE 0 END) AS jobs_fallidos
+FROM   msdb.dbo.sysjobhistory
+WHERE  step_id = 0
+  AND  run_date = CONVERT(INT, CONVERT(VARCHAR(8), GETDATE(), 112))
+OPTION (MAXDOP 1)
 """
 
 
@@ -1111,11 +1150,35 @@ def _iso(valor):
 
 class ClienteSQL(object):
     """
-    Conexion de solo lectura a una instancia monitorizada. Abre y cierra en
-    cada consulta a proposito: son cuatro consultas ligeras, cada una con su
-    propio intervalo (nombres de job 900 s, jobs activos 30 s, esperas 300 s,
-    resumen 120 s), y mantener conexiones vivas contra produccion no compensa
-    el riesgo.
+    Conexion de solo lectura a una instancia monitorizada.
+
+    AISLAMIENTO. La sesion se pone en READ UNCOMMITTED nada mas conectar, y
+    esto NO es un detalle de rendimiento: es correccion.
+
+    El 13, 14 y 15 de noviembre de 2026 el informe de bloqueos de ATENEA2
+    senalo a este colector como BLOQUEADOR RAIZ (455 s, 1.178 s y 1.210 s de
+    bloqueo causado, 319 incidentes el ultimo dia). El mecanismo: leer
+    msdb.dbo.sysjobhistory en READ COMMITTED toma locks compartidos; sobre una
+    tabla de millones de filas el lock escala a nivel de tabla; y entonces
+    CADA paso de job que intenta escribir su fila de historial se queda
+    esperando. Esos jobs si tienen locks abiertos en Grupo y en Cenusa, asi
+    que la espera se propaga. Pico a las 18-21 h, justo cuando arranca el
+    batch nocturno y el Agent mas escribe.
+
+    En READ UNCOMMITTED no tomamos locks compartidos, luego no bloqueamos a
+    nadie. La lectura sucia es irrelevante para un panel: lo peor que puede
+    pasar es contar un job que acaba de terminar, o no contarlo.
+
+    Efecto secundario conocido: un scan en READ UNCOMMITTED puede abortar con
+    el error 601 ("could not continue scan with NOLOCK due to data movement").
+    SQLDirecto se traga cualquier excepcion y reutiliza el valor cacheado, asi
+    que se traduce en un refresco perdido, no en un fallo visible.
+
+    CONEXION. Se mantiene viva entre consultas y se reconecta sola si se cae.
+    Antes se abria y cerraba una por consulta: con siete funciones a sus
+    intervalos eso son cientos de logins al dia contra produccion sin ninguna
+    necesidad. La conexion va en autocommit, sin transaccion abierta, asi que
+    estar conectado no retiene nada.
     """
 
     def __init__(self, host, puerto, usuario, password, timeout=8):
@@ -1124,25 +1187,67 @@ class ClienteSQL(object):
         self.usuario = usuario
         self.password = password
         self.timeout = int(timeout)
+        self._conn = None
+        # Antes cada consulta abria su propia conexion y el aislamiento entre
+        # hilos salia gratis. Al reutilizar una sola hay que serializar: las
+        # conexiones de pymssql NO son seguras entre hilos, y aqui coinciden
+        # el hilo del colector y el del servidor HTTP. Las consultas del
+        # colector son secuenciales de todos modos, asi que no se pierde nada.
+        self._lock = threading.Lock()
 
-    def consulta(self, sql):
+    def _conectar(self):
         conn = pymssql.connect(
             server=self.host, port=self.puerto,
             user=self.usuario, password=self.password,
             database="msdb", timeout=self.timeout,
             login_timeout=self.timeout, as_dict=True,
-            appname="dpa-dashboard")
-        try:
-            # as_dict ya va en connect(): las versiones antiguas de pymssql no
-            # aceptan kwargs en cursor()
-            cur = conn.cursor()
-            cur.execute(sql)
-            return cur.fetchall()
-        finally:
+            autocommit=True, appname="dpa-dashboard")
+        cur = conn.cursor()
+        # No tocamos nada, solo miramos: ni locks compartidos ni esperas.
+        # LOCK_TIMEOUT por si algo quedara fuera del alcance de lo anterior
+        # (p. ej. metadatos): antes esperar indefinidamente, ahora se rinde.
+        cur.execute("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; "
+                    "SET LOCK_TIMEOUT 5000;")
+        return conn
+
+    def consulta(self, sql):
+        with self._lock:
+            # Un solo reintento, y SOLO si se venia reutilizando una conexion
+            # anterior: en ese caso el fallo suele ser que estaba muerta
+            # (reinicio, failover del AG, corte de red) y volver a intentarlo
+            # con una nueva arregla la llamada.
+            #
+            # Si la conexion se acaba de abrir en esta misma llamada, el error
+            # es real --timeout de consulta, permisos, error 601-- y reintentar
+            # solo consigue LANZAR DOS VECES LA MISMA CONSULTA. Con el scan de
+            # sysjobhistory eso seria exactamente lo que estamos intentando
+            # evitar: dos pasadas por la tabla en vez de una.
+            for intento in (1, 2):
+                reutilizada = self._conn is not None
+                if not reutilizada:
+                    self._conn = self._conectar()
+                try:
+                    # as_dict ya va en connect(): las versiones antiguas de
+                    # pymssql no aceptan kwargs en cursor()
+                    cur = self._conn.cursor()
+                    cur.execute(sql)
+                    return cur.fetchall()
+                except Exception:  # noqa: BLE001
+                    self._cerrar()
+                    if not reutilizada or intento == 2:
+                        raise
+
+    def cerrar(self):
+        with self._lock:
+            self._cerrar()
+
+    def _cerrar(self):
+        if self._conn is not None:
             try:
-                conn.close()
+                self._conn.close()
             except Exception:  # noqa: BLE001
                 pass
+            self._conn = None
 
 
 class SQLDirecto(object):
@@ -1175,6 +1280,9 @@ class SQLDirecto(object):
 
         self.int_esperas = int(raw.get("intervalo_esperas_segundos", 300))
         self.int_resumen = int(raw.get("intervalo_resumen_segundos", 120))
+        # El contador de jobs del dia lee sysjobhistory entera. Va aparte y
+        # mucho mas espaciado: ver el comentario de SQL_JOBS_HOY.
+        self.int_jobshoy = int(raw.get("intervalo_jobs_hoy_segundos", 600))
         self.int_histbloq = int(raw.get("intervalo_hist_bloqueos_segundos", 600))
         # el bloqueo en vivo es lo que mas rapido cambia y la consulta es
         # barata: por defecto se refresca en cada ciclo del colector
@@ -1192,6 +1300,7 @@ class SQLDirecto(object):
         self._jobs = {}       # instancia -> (ts, [ {...} ])
         self._esperas = {}    # instancia -> (ts, [ {...} ])
         self._resumen = {}    # instancia -> (ts, {...})
+        self._jobshoy = {}    # instancia -> (ts, {...})
         self._histbloq = {}   # instancia -> (ts, [ {...} ])
         self._bloqvivo = {}   # instancia -> (ts, [ {...} ])
         self._procs    = {}   # instancia -> (ts, [ {...} ])
@@ -1407,9 +1516,18 @@ class SQLDirecto(object):
                               SQL_PROCEDIMIENTOS, _t)
 
     def resumen(self, instancia):
+        """
+        Calidad de la cache de planes + contadores del SQL Agent.
+
+        Son dos consultas con ritmos muy distintos a proposito: la de planes
+        es barata (DMV) y va cada 2 minutos; la de jobs recorre
+        sysjobhistory y va cada 10. Se devuelven juntas porque el panel las
+        pinta en el mismo sitio.
+        """
         if not self.habilitado(instancia):
             return None
-        def _t(filas):
+
+        def _plan(filas):
             if not filas:
                 return None
             f = filas[0]
@@ -1417,11 +1535,23 @@ class SQLDirecto(object):
                     "planes_adhoc": f.get("planes_adhoc"),
                     "adhoc_1uso": f.get("adhoc_1uso"),
                     "adhoc_mb": f.get("adhoc_mb"),
-                    "planes_prep": f.get("planes_prep"),
-                    "jobs_hoy": f.get("jobs_hoy"),
+                    "planes_prep": f.get("planes_prep")}
+
+        def _jobs(filas):
+            if not filas:
+                return None
+            f = filas[0]
+            return {"jobs_hoy": f.get("jobs_hoy"),
                     "jobs_fallidos": f.get("jobs_fallidos")}
-        return self._cacheado(self._resumen, instancia, self.int_resumen,
-                              SQL_RESUMEN, _t)
+
+        out = self._cacheado(self._resumen, instancia, self.int_resumen,
+                             SQL_RESUMEN, _plan)
+        j = self._cacheado(self._jobshoy, instancia, self.int_jobshoy,
+                           SQL_JOBS_HOY, _jobs)
+        if j:
+            out = dict(out or {})
+            out.update(j)
+        return out or None
 
     def error(self, instancia):
         with self._lock:
